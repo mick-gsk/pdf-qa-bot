@@ -49,8 +49,8 @@ def test_small_bare_numbers_are_not_derived():
 
 
 def test_numbers_from_the_question_are_accepted():
-    assert statuses("Yes, 3 nights in Paris cost up to 480 euros [1].", "Are 3 nights in Paris ok?") == [
-        ("3", "supported"), ("480 euros", "unsupported")]
+    assert statuses("Yes, 3 nights in Paris cost up to 480 euros in total [1].", "Are 3 nights in Paris ok?") == [
+        ("3", "supported"), ("480 euros", "derived")]  # 3 × 160 euros
 
 
 def test_uncited_sentence_may_use_any_excerpt():
@@ -80,3 +80,9 @@ def test_summary_counts():
     report = verify("Up to 120 euros [1], in Paris 40 euros more [1], and 99 euros for taxis [1].", SOURCES)
     assert report.summary() == {"supported": 1, "derived": 1, "unsupported": 1,
                                 "unit_mismatch": 0, "wrong_citation": 0}
+
+
+def test_derived_needs_a_calculation_word():
+    sources = ["The warranty is 2 years. Registering extends it to 3 years."]
+    assert verify("The warranty is 5 years [1].", sources).checks[0].status == "unsupported"
+    assert verify("Together that makes 5 years [1].", sources).checks[0].status == "derived"

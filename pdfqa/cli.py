@@ -3,6 +3,7 @@
     python -m pdfqa.cli index handbook.pdf policies.pdf
     python -m pdfqa.cli ask "How many vacation days do I get?"
     python -m pdfqa.cli eval examples/eval.json
+    python -m pdfqa.cli bench-grounding examples/grounding_cases.json
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import evaluate
+from . import evaluate, grounding_bench
 from .config import ConfigError, Settings
 from .index import Index
 from .ingest import chunk_pdf
@@ -33,12 +34,22 @@ def main(argv: list[str] | None = None) -> int:
     p_eval.add_argument("cases", type=Path)
     p_eval.add_argument("-k", type=int, help="number of excerpts to use (default: TOP_K or 4)")
     p_eval.add_argument("-v", "--verbose", action="store_true", help="list failed questions")
+    p_bench = sub.add_parser("bench-grounding", help="measure the value check on answers with known mistakes")
+    p_bench.add_argument("cases", type=Path)
+    p_bench.add_argument("-v", "--verbose", action="store_true", help="list misses and false alarms")
     args = parser.parse_args(argv)
     try:
         settings = Settings.from_env()
     except ConfigError as exc:
         parser.error(str(exc))
     k = getattr(args, "k", None) or settings.top_k  # "index" has no -k
+
+    if args.command == "bench-grounding":
+        bench = grounding_bench.run(args.cases, k=k)
+        print(json.dumps(bench.summary(), indent=2))
+        if args.verbose:
+            print("\n".join(bench.misses), file=sys.stderr)
+        return 0
 
     if args.command == "eval":
         report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k)

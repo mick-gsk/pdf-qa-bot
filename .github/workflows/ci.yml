@@ -23,6 +23,10 @@ jobs:
       - run: pytest -q --cov --cov-report=term --cov-fail-under=85
       - name: Evaluation (extractive mode)
         run: pdfqa eval examples/eval.json -v
+      - name: Value check benchmark
+        run: |
+          pdfqa bench-grounding examples/eval.json -v
+          pdfqa bench-grounding examples/grounding_cases.json -v
 
   docker:
     runs-on: ubuntu-latest

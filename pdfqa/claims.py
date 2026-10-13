@@ -53,7 +53,7 @@ _add("B", 1e9, "gb", "gigabyte", "gigabytes")
 _add("°C", 1, "°c", "degrees celsius", "degree celsius", "grad celsius", "grad")
 
 _UNIT_RE = "|".join(sorted((re.escape(u) for u in _UNITS), key=len, reverse=True))
-# units that may follow one descriptive word: "28 vacation days", "120 extra euros"
+# units that may follow one or two descriptive words: "28 vacation days", "five unused vacation days"
 _WORD_UNIT_RE = "|".join(sorted((re.escape(u) for u in _UNITS if len(u) > 3 and u.isalpha()), key=len, reverse=True))
 
 # --- number words -------------------------------------------------------------------------
@@ -62,7 +62,7 @@ _WORDS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
     "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20,
     "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "ninety": 90, "hundred": 100,
-    "a dozen": 12, "half": 0.5,
+    "a dozen": 12, "half": 0.5, "half an": 0.5, "half a": 0.5, "eine halbe": 0.5, "einer halben": 0.5,
     "null": 0, "ein": 1, "eine": 1, "einen": 1, "einem": 1, "zwei": 2, "drei": 3, "vier": 4,
     "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10, "elf": 11,
     "zwölf": 12, "fünfzehn": 15, "zwanzig": 20, "dreißig": 30, "hundert": 100,
@@ -99,7 +99,7 @@ _TIME_RE = re.compile(r"\b(?P<h>[01]?\d|2[0-3])(?::(?P<min>[0-5]\d)(?:\s*uhr\b)?
 _PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?(?P<num>{_NUM})")
 _AMOUNT_RE = re.compile(
     rf"(?<![\w.,])(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?"
-    rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|\s+[a-zäöüß-]{{3,15}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
+    rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|(?:\s+[a-zäöüß-]{{3,15}}){{1,2}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
     re.IGNORECASE,
 )
 _QUOTE_RE = re.compile(r"[\"“„«](?P<q>[^\"“”„«»]{12,300})[\"”“»]")
@@ -119,6 +119,7 @@ class Claim:
     unit: str | None = None  # canonical unit, None for a bare number
     key: str = ""
     number: float | None = None  # as written, before unit conversion: 25 for "25 minutes"
+    part: int = 0  # 1 for the upper end of a range ("20 to 220 ml")
 
     def __str__(self) -> str:
         return self.text
@@ -202,10 +203,10 @@ def extract(text: str) -> list[Claim]:
             continue  # "one of the rules" is not a claim; "three days" is
         unit, factor = _UNITS[raw_unit] if raw_unit else (None, 1.0)
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])
-        for number in numbers:
+        for part, number in enumerate(numbers):
             for value in parse_number(number):
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, unit,
-                           _amount_key(value * factor, unit), value))
+                           _amount_key(value * factor, unit), value, part))
     return sorted(claims, key=lambda c: (c.start, c.key))
 
 
