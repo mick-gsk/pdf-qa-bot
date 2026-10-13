@@ -178,3 +178,18 @@ def test_each_bare_number_is_bound_to_its_own_noun():
 def test_negative_totals_can_be_derived():
     sources = ["Fee A: -€5. Fee B: -€7."]
     assert [c.status for c in verify("The fees are -€12 in total [1].", sources).checks] == ["derived"]
+
+
+def test_magnitude_abbreviation_does_not_end_the_sentence():
+    report = verify("The grant is 120 Mio. euros [1].", ["The grant is 120 million dollars."])
+    assert [c.status for c in report.checks] == ["unit_mismatch"]
+
+
+def test_non_breaking_space_separates_thousands():
+    assert [c.status for c in verify("Budget is 234 euros [1].", ["Budget is 1\u00a0234 euros."]).checks] == [
+        "unsupported"]
+
+
+def test_citation_opening_the_clause_wins_over_the_next_one():
+    text = "According to [1], hotels cost 120 euros; according to [2], leave is 28 vacation days."
+    assert statuses(text) == [("120 euros", "supported"), ("28 vacation days", "supported")]

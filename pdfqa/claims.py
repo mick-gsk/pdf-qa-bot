@@ -134,7 +134,7 @@ _MAG = rf"(?:\s+(?P<mag>{'|'.join(sorted(_MAGNITUDES, key=len, reverse=True))})\
 
 # --- patterns -----------------------------------------------------------------------------
 
-_NUM = r"\d{1,3}(?:[.,  ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?"
+_NUM = r"\d{1,3}(?:[.,  \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?"
 _DATE_PATTERNS = [
     # 2026-01-31
     re.compile(r"\b(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\b"),
@@ -189,7 +189,7 @@ def parse_number(text: str) -> list[float]:
     compound = _compound_value(text)
     if compound is not None:
         return [compound]
-    text = text.replace(" ", "").replace(" ", "")
+    text = text.replace(" ", "").replace("\u00a0", "").replace(" ", "")
     if "," in text and "." in text:  # the later separator is the decimal one
         decimal = "," if text.rfind(",") > text.rfind(".") else "."
         thousands = "." if decimal == "," else ","

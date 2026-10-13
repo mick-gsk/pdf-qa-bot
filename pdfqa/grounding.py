@@ -28,8 +28,8 @@ from .claims import _MONTH_RE, Claim, extract, normalise_text
 PROBLEMS = ("unsupported", "unit_mismatch", "wrong_citation")
 
 _BOUNDARY_RE = re.compile(r"[.!?](?:\s*\[\d+\])*(?=\s|$)")
-# a period after these does not end a sentence: "1. Januar", "e.g. 5", "ca. 20"
-_NO_BREAK_RE = re.compile(r"(?:\b\d{1,2}|\b(?:e\.g|i\.e|z\.b|ca|approx|nr|no|p|pp|vs|etc|bzw|inkl|ggf))$",
+# a period after these does not end a sentence: "1. Januar", "e.g. 5", "ca. 20", "120 Mio. euros"
+_NO_BREAK_RE = re.compile(r"(?:\b\d{1,2}|\b(?:e\.g|i\.e|z\.b|ca|approx|nr|no|p|pp|vs|etc|bzw|inkl|ggf|mio|mrd|tsd))$",
                           re.IGNORECASE)
 _MONTH_START_RE = re.compile(rf"\s+(?:{_MONTH_RE})\b", re.IGNORECASE)
 _CITE_RE = re.compile(r"\[(\d+)\]")
@@ -97,7 +97,7 @@ def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
             by_span.setdefault((claim.start, claim.end, claim.part), []).append(claim)
         groups = list(_CITE_GROUP_RE.finditer(sentence.group(0)))
         for (start, end, _), readings in by_span.items():
-            cited = _citation_for(start, end, groups)
+            cited = _citation_for(start, end, groups, sentence.group(0))
             check = min((_check(c, indexed, cited, asked, sentence.group(0)) for c in readings), key=_rank)
             check.start += sentence.start()
             check.end += sentence.start()
@@ -170,12 +170,16 @@ def _sentence(answer: str, start: int, end: int) -> Iterator[tuple[_Sentence, se
         yield _Sentence(text, start), {int(n) for n in _CITE_RE.findall(text)}
 
 
-def _citation_for(start: int, end: int, groups: list[re.Match[str]]) -> set[int]:
+def _citation_for(start: int, end: int, groups: list[re.Match[str]], text: str) -> set[int]:
     """The citation a value belongs to: the next one after it in the sentence, else the last
-    one before it. "120 euros [1] and 28 days [2]" checks each value against its own excerpt."""
-    group = next((g for g in groups if g.start() >= end), None)
-    if group is None:
-        group = next((g for g in reversed(groups) if g.end() <= start), None)
+    one before it. "120 euros [1] and 28 days [2]" checks each value against its own excerpt.
+    A citation earlier in the value's own clause beats the next one behind a semicolon:
+    "according to [1], hotels cost 120 euros; according to [2], ..." is [1]."""
+    after = next((g for g in groups if g.start() >= end), None)
+    before = next((g for g in reversed(groups) if g.end() <= start), None)
+    if after and before and ";" in text[end:after.start()] and ";" not in text[before.end():start]:
+        after = None
+    group = after or before
     return {int(n) for n in _CITE_RE.findall(group.group(0))} if group else set()
 
 
