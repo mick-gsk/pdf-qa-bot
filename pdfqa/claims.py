@@ -60,12 +60,16 @@ _WORD_UNIT_RE = "|".join(sorted((re.escape(u) for u in _UNITS if len(u) > 3 and 
 
 _WORDS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
-    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20,
-    "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "ninety": 90, "hundred": 100,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+    "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    "hundred": 100,
     "a dozen": 12, "half": 0.5,
     "null": 0, "ein": 1, "eine": 1, "einen": 1, "einem": 1, "zwei": 2, "drei": 3, "vier": 4,
     "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10, "elf": 11,
-    "zwölf": 12, "fünfzehn": 15, "zwanzig": 20, "dreißig": 30, "hundert": 100,
+    "zwölf": 12, "dreizehn": 13, "vierzehn": 14, "fünfzehn": 15, "sechzehn": 16, "siebzehn": 17,
+    "achtzehn": 18, "neunzehn": 19, "zwanzig": 20, "dreißig": 30, "vierzig": 40, "fünfzig": 50,
+    "sechzig": 60, "siebzig": 70, "achtzig": 80, "neunzig": 90, "hundert": 100,
 }
 _WORD_RE = "|".join(sorted(map(re.escape, _WORDS), key=len, reverse=True))
 
@@ -86,6 +90,9 @@ _MAGNITUDES = {
     "billion": 1e9, "billions": 1e9, "milliarde": 1e9, "milliarden": 1e9, "mrd": 1e9, "bn": 1e9,
     "billionen": 1e12,
 }
+# "AM" only in capitals: "am" is a German word ("um 9:30 am Montag")
+_AMPM = r"[ap]\.m\.|(?-i:AM)|pm\b"
+_SIGN = r"(?P<sign>[-+\u2212](?=\d))?"
 _MAG = rf"(?:\s+(?P<mag>{'|'.join(sorted(_MAGNITUDES, key=len, reverse=True))})\b\.?)?"
 
 # --- patterns -----------------------------------------------------------------------------
@@ -103,11 +110,13 @@ _DATE_PATTERNS = [
     re.compile(rf"\b(?P<mon>{_MONTH_RE})\.?\s+(?P<d>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y>\d{{4}}))?\b",
                re.IGNORECASE),
 ]
-_TIME_RE = re.compile(r"\b(?P<h>[01]?\d|2[0-3])(?::(?P<min>[0-5]\d)(?:\s*uhr\b)?|\.(?P<min2>[0-5]\d)\s*uhr\b)",
+_TIME_RE = re.compile(r"\b(?P<h>[01]?\d|2[0-3])(?::(?P<min>[0-5]\d)(?:\s*uhr\b)?|\.(?P<min2>[0-5]\d)\s*uhr\b)"
+                      rf"(?:\s*(?P<ampm>{_AMPM}))?|\b(?P<h12>1[0-2]|0?[1-9])\s*(?P<ampm12>{_AMPM})",
                       re.IGNORECASE)
-_PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?(?P<num>{_NUM}){_MAG}", re.IGNORECASE)
+_PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?{_SIGN}(?P<num>{_NUM}){_MAG}",
+                                 re.IGNORECASE)
 _AMOUNT_RE = re.compile(
-    rf"(?<![\w.,])(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
+    rf"(?<![\w.,]){_SIGN}(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
     rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|\s+[a-zäöüß-]{{3,15}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
     re.IGNORECASE,
 )
@@ -193,13 +202,14 @@ def extract(text: str) -> list[Claim]:
     for m in _TIME_RE.finditer(masked):
         if free(m.start(), m.end()):
             take(Claim("time", m.group(0).strip(), m.start(), m.end(),
-                       key=f"{int(m.group('h')):02d}:{m.group('min') or m.group('min2')}"))
+                       key=_time_key(m)))
 
     for m in _PREFIX_CURRENCY_RE.finditer(masked):
         if free(m.start(), m.end()):
             currency, factor = _UNITS[m.group("unit").lower()]
-            factor *= _magnitude(m)
+            magnitude = _magnitude(m)
             for value in parse_number(m.group("num")):
+                value *= magnitude
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, currency,
                            _amount_key(value * factor, currency), value))
 
@@ -222,7 +232,19 @@ def extract(text: str) -> list[Claim]:
 
 
 def _magnitude(m: re.Match[str]) -> float:
-    return _MAGNITUDES[m.group("mag").lower()] if m.group("mag") else 1.0
+    """Sign and magnitude word of an amount: "-5 %" is -5, "120 Mio." is 120,000,000."""
+    sign = -1.0 if m.group("sign") in ("-", "\u2212") else 1.0
+    return sign * (_MAGNITUDES[m.group("mag").lower()] if m.group("mag") else 1.0)
+
+
+def _time_key(m: re.Match[str]) -> str:
+    """24-hour "HH:MM"; "2:30 PM" is "14:30", "12 a.m." is "00:00"."""
+    hour = int(m.group("h") or m.group("h12"))
+    minute = m.group("min") or m.group("min2") or "00"
+    ampm = (m.group("ampm") or m.group("ampm12") or "").lower()
+    if ampm and hour <= 12:
+        hour = hour % 12 + (12 if ampm.startswith("p") else 0)
+    return f"{hour:02d}:{minute}"
 
 
 def _mask(text: str) -> str:
