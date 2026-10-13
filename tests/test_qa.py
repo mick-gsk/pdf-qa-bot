@@ -88,3 +88,8 @@ def test_stream_without_llm_searches_once():
     index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
     events = list(answer_stream("How many vacation days?", index))
     assert events[-1][0] == "done" and len(calls) == 1
+
+
+def test_short_sentence_can_be_the_answer():
+    index = Index([Chunk("terms.pdf", 2, "Shipping is free within Germany. No refunds.")])
+    assert answer("Any refunds?", index).text == "No refunds. [1]"
