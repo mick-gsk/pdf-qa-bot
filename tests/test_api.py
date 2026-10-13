@@ -64,3 +64,8 @@ def test_token_is_required_when_configured(tmp_path):
     assert c.get("/documents").status_code == 401
     assert c.get("/documents", headers={"Authorization": "Bearer wrong"}).status_code == 401
     assert c.get("/documents", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_non_ascii_token_header_is_rejected_not_an_error(tmp_path):
+    c = TestClient(create_app(tmp_path, api_token="s3cret"))
+    assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 401
