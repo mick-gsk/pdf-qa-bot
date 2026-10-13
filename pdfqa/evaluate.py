@@ -39,15 +39,16 @@ class Report:
     refused: int = 0  # said "not found" for an unanswerable question
     failures: list[str] = field(default_factory=list)
 
-    def summary(self) -> dict[str, float | int | str]:
-        a, u = self.answerable or 1, self.unanswerable or 1
+    def summary(self) -> dict[str, float | int | str | None]:
+        """Rates per question type; None where the case file has no question of that type."""
+        a, u = self.answerable, self.unanswerable
         return {
             "mode": self.mode,
-            "questions": self.answerable + self.unanswerable,
-            f"hit@{self.k}": round(self.hits / a, 3),
-            "mrr": round(self.reciprocal_ranks / a, 3),
-            "answer_accuracy": round(self.correct / a, 3),
-            "correct_refusals": round(self.refused / u, 3),
+            "questions": a + u,
+            f"hit@{self.k}": round(self.hits / a, 3) if a else None,
+            "mrr": round(self.reciprocal_ranks / a, 3) if a else None,
+            "answer_accuracy": round(self.correct / a, 3) if a else None,
+            "correct_refusals": round(self.refused / u, 3) if u else None,
         }
 
 

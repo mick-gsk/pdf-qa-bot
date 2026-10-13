@@ -96,3 +96,7 @@ def test_remove_document_keeps_vectors_of_the_rest():
     assert index._vectors == [[float(len(CHUNKS[2].text)), 1.0]]
     assert index.search("laptop")[0][0].doc == "b.pdf"
     assert index.remove("missing.pdf") == 0
+
+
+def test_inflected_stopwords_are_dropped_like_their_base_form():
+    assert tokenize("What are employees getting?") == tokenize("Employees get") == ["employe"]

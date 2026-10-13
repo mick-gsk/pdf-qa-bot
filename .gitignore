@@ -5,3 +5,6 @@ __pycache__/
 data/
 .pytest_cache/
 *.egg-info/
+.coverage
+.mypy_cache/
+.ruff_cache/
