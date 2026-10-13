@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 from pathlib import Path
+from typing import BinaryIO
 
 from .config import Settings
 from .index import Index
@@ -55,6 +56,12 @@ class Store:
         if safe_name(name) not in self.index.documents() or not path.is_file():
             raise DocumentNotFound(f"{name} is not indexed.")
         return path
+
+    def open(self, name: str) -> BinaryIO:
+        """An open handle to the PDF. It stays readable if the document is removed meanwhile,
+        so a download that is still streaming is not cut off by a delete."""
+        with self.lock:
+            return self.path(name).open("rb")
 
     def add_pdf(self, filename: str, data: bytes) -> int:
         name = safe_name(filename)
