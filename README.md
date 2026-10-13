@@ -183,7 +183,7 @@ OpenAPI docs are served at `/docs`.
 | `DELETE` | `/documents` | remove all documents |
 | `POST` | `/ask` | `{"question": "...", "k": 4}` returns answer, sources, checks, mode |
 | `POST` | `/ask/stream` | same, as server-sent events: `token` pieces, then `done` |
-| `GET` | `/health` | active model and index size (no token needed) |
+| `GET` | `/health` | active model, index size and value-check mode (no token needed) |
 
 Every response carries an `X-Request-ID` header that also appears in the log line for that
 request. If the model provider fails, `/ask` returns 502 with a readable message.

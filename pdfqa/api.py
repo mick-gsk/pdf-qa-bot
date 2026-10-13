@@ -90,7 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"status": "ok", "llm": llm.name if llm else "none (extractive mode)",
                 "embeddings": bool(store.embed), "chunks": len(store.index),
-                "auth": bool(settings.api_token)}
+                "auth": bool(settings.api_token), "grounding": settings.grounding}
 
     @app.get("/documents", dependencies=auth)
     def documents() -> dict:
