@@ -201,6 +201,8 @@ def extract(text: str) -> list[Claim]:
         is_word = m.group("num").lower() in _WORDS
         if is_word and not raw_unit:
             continue  # "one of the rules" is not a claim; "three days" is
+        if is_word and m.group("unit") and masked[m.end("num")] not in " \u00a0-":
+            continue  # "ones", "eins": a number word glued to a unit letter is just a word
         unit, factor = _UNITS[raw_unit] if raw_unit else (None, 1.0)
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])
         for part, number in enumerate(numbers):
