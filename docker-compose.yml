@@ -1,0 +1,24 @@
+# Fully local setup: the app plus Ollama for answers and embeddings.
+# No document text leaves the machine.
+#
+#   docker compose up -d
+#   docker compose exec ollama ollama pull llama3.1
+#   docker compose exec ollama ollama pull nomic-embed-text
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      LLM_PROVIDER: ollama
+      EMBEDDINGS: ollama
+      OLLAMA_HOST: http://ollama:11434
+      API_TOKEN: ${API_TOKEN:-}
+    volumes: ["pdfqa-data:/data"]
+    depends_on: [ollama]
+  ollama:
+    image: ollama/ollama
+    volumes: ["ollama:/root/.ollama"]
+
+volumes:
+  pdfqa-data:
+  ollama:

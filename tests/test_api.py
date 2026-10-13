@@ -56,3 +56,21 @@ def test_reset(tmp_path, sample_pdf):
     c.post("/documents", files={"files": ("h.pdf", sample_pdf.read_bytes(), "application/pdf")})
     assert c.delete("/documents").json() == {"documents": []}
     assert c.get("/health").json()["chunks"] == 0
+
+
+def test_token_is_required_when_configured(tmp_path):
+    c = TestClient(create_app(tmp_path, api_token="s3cret"))
+    assert c.get("/health").json()["auth"] is True
+    assert c.get("/documents").status_code == 401
+    assert c.get("/documents", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert c.get("/documents", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_non_ascii_token_header_is_rejected_not_an_error(tmp_path):
+    c = TestClient(create_app(tmp_path, api_token="s3cret"))
+    assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 401
+
+
+def test_non_ascii_token_can_authenticate(tmp_path):
+    c = TestClient(create_app(tmp_path, api_token="pässwort"))
+    assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 200

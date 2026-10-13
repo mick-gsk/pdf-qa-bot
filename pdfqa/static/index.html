@@ -59,8 +59,21 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+// When the server sets API_TOKEN, ask for it once and keep it in this browser.
+async function api(path, options = {}) {
+  const token = localStorage.getItem("pdfqa-token");
+  const headers = { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) {
+    const entered = prompt("This server needs an access token:");
+    if (entered) { localStorage.setItem("pdfqa-token", entered.trim()); return api(path, options); }
+  }
+  return res;
+}
+
 async function refresh() {
-  const [docs, health] = await Promise.all([fetch("/documents").then(r => r.json()), fetch("/health").then(r => r.json())]);
+  const [docs, health] = await Promise.all([api("/documents").then(r => r.json()), fetch("/health").then(r => r.json())]);
+  docs.documents = docs.documents || [];
   $("docs").innerHTML = docs.documents.map(d => `<span class="chip">${esc(d)}</span>`).join("");
   $("reset").hidden = !docs.documents.length;
   $("mode").textContent = `Model: ${health.llm} · ${health.chunks} chunks indexed`;
@@ -71,7 +84,7 @@ async function upload(files) {
   const body = new FormData();
   [...files].forEach(f => body.append("files", f));
   $("upload-status").textContent = "Indexing…";
-  const res = await fetch("/documents", { method: "POST", body });
+  const res = await api("/documents", { method: "POST", body });
   const data = await res.json();
   $("upload-status").textContent = res.ok
     ? Object.entries(data.added).map(([f, n]) => `${f}: ${n} chunks`).join(" · ")
@@ -85,14 +98,14 @@ $("file").onchange = (e) => upload(e.target.files);
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); };
-$("reset").onclick = async () => { await fetch("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
+$("reset").onclick = async () => { await api("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
 
 $("ask").onsubmit = async (e) => {
   e.preventDefault();
   const question = $("question").value.trim();
   if (!question) return;
   $("send").disabled = true;
-  const res = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+  const res = await api("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
   const data = await res.json();
   $("send").disabled = false;
   const answer = res.ok ? esc(data.answer).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>") : esc(data.detail);
