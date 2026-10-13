@@ -27,10 +27,10 @@ class LLM(Protocol):
 
 
 class AnthropicLLM:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, api_key: str | None = None) -> None:
         import anthropic
 
-        self.client = anthropic.Anthropic()
+        self.client = anthropic.Anthropic(api_key=api_key)
         self.name = f"anthropic:{model}"
         self.model = model
 
@@ -46,10 +46,10 @@ class AnthropicLLM:
 
 
 class OpenAILLM:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, api_key: str | None = None) -> None:
         import openai
 
-        self.client = openai.OpenAI()
+        self.client = openai.OpenAI(api_key=api_key)
         self.name = f"openai:{model}"
         self.model = model
 
@@ -87,9 +87,9 @@ class OllamaLLM:
 
 def get_llm(settings: Settings) -> LLM | None:
     if settings.llm_provider == "anthropic":
-        return AnthropicLLM(settings.llm_model)
+        return AnthropicLLM(settings.llm_model, settings.anthropic_api_key)
     if settings.llm_provider == "openai":
-        return OpenAILLM(settings.llm_model)
+        return OpenAILLM(settings.llm_model, settings.openai_api_key)
     if settings.llm_provider == "ollama":
         return OllamaLLM(settings.llm_model, settings.ollama_host)
     return None
@@ -100,7 +100,7 @@ def get_embedder(settings: Settings) -> Callable[[Sequence[str]], list[list[floa
     if settings.embeddings == "openai":
         import openai
 
-        client = openai.OpenAI()
+        client = openai.OpenAI(api_key=settings.openai_api_key)
 
         def embed(texts: Sequence[str]) -> list[list[float]]:
             vectors: list[list[float]] = []

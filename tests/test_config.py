@@ -1,6 +1,11 @@
+import sys
+import types
+from unittest import mock
+
 import pytest
 
 from pdfqa.config import ConfigError, Settings, read_dotenv
+from pdfqa.llm import get_llm
 
 
 def test_defaults_without_keys_use_extractive_mode():
@@ -34,3 +39,19 @@ def test_dotenv_parsing(tmp_path):
     env = tmp_path / ".env"
     env.write_text('# comment\nANTHROPIC_API_KEY=\nLLM_PROVIDER="ollama"  # local\nTOP_K=6\n')
     assert read_dotenv(env) == {"LLM_PROVIDER": "ollama", "TOP_K": "6"}
+
+
+def test_api_keys_from_dotenv_reach_the_clients(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-from-dotenv\n")
+    monkeypatch.chdir(tmp_path)
+    for name in ("LLM_PROVIDER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings.from_env()
+    assert settings.llm_provider == "anthropic"
+    assert "sk-from-dotenv" not in repr(settings)
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = mock.Mock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    get_llm(settings)
+    fake.Anthropic.assert_called_once_with(api_key="sk-from-dotenv")  # type: ignore[attr-defined]
