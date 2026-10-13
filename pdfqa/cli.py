@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     if not len(index):
         print("Index is empty. Run: pdfqa index <file.pdf>", file=sys.stderr)
         return 1
-    result = answer(args.question, index, get_llm(settings), k=k)
+    result = answer(args.question, index, get_llm(settings), k=k, grounding=settings.grounding)
     print(result.text)
     for source in result.sources:
         print(f"  [{source.n}] {source.citation}")
