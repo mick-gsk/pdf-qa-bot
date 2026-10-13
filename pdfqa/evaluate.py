@@ -85,9 +85,10 @@ def evaluate(index: Index, cases: list[Case], llm: LLM | None = None, k: int = 4
     return report
 
 
-def run(case_file: str | Path, llm: LLM | None = None, embed: EmbedFn | None = None, k: int = 4) -> Report:
+def run(case_file: str | Path, llm: LLM | None = None, embed: EmbedFn | None = None, k: int = 4,
+        chunk_words: int = 120) -> Report:
     docs, cases = load_cases(case_file)
     index = Index(embed=embed)
     for doc in docs:
-        index.add(chunk_pdf(doc))
+        index.add(chunk_pdf(doc, max_words=chunk_words))
     return evaluate(index, cases, llm, k=k)
