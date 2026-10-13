@@ -119,3 +119,8 @@ def test_answer_may_not_add_a_year_the_source_does_not_give():
     assert verify("It closes on 24 December [1].", sources).grounded
     # the other way round is fine: the answer leaves out a year the source gives
     assert verify("The rules apply from 1 January [2].", SOURCES).grounded
+
+
+def test_citation_after_an_abbreviation_ends_the_sentence():
+    answer = "Hotels up to 150 euros, taxis etc. [1] You get 28 vacation days [2]."
+    assert strip_unsupported(answer, verify(answer, SOURCES)) == "You get 28 vacation days [2]."

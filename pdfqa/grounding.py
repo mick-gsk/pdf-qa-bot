@@ -155,7 +155,9 @@ def _sentences(answer: str) -> Iterator[tuple[_Sentence, set[int]]]:
         before = answer[start:m.start()]
         if before.strip().isdigit():
             continue  # list numbering: "1. Hotel costs ..."
-        if _NO_BREAK_RE.search(before) and (not before[-1:].isdigit() or _MONTH_START_RE.match(answer, m.end())):
+        # a citation after the period ends the sentence even after "etc." or "ca."
+        if ("[" not in m.group(0) and _NO_BREAK_RE.search(before)
+                and (not before[-1:].isdigit() or _MONTH_START_RE.match(answer, m.end()))):
             continue
         yield from _sentence(answer, start, m.end())
         start = m.end()
