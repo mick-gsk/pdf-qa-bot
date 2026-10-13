@@ -109,6 +109,7 @@ def get_embedder(settings: Settings) -> Callable[[Sequence[str]], list[list[floa
                 vectors.extend(d.embedding for d in res.data)
             return vectors
 
+        embed.model = f"openai/{model}"  # type: ignore[attr-defined]
         return embed
     if settings.embeddings == "ollama":
         host = settings.ollama_host
@@ -118,5 +119,6 @@ def get_embedder(settings: Settings) -> Callable[[Sequence[str]], list[list[floa
             res.raise_for_status()
             return res.json()["embeddings"]
 
+        embed.model = f"ollama/{model}"  # type: ignore[attr-defined]
         return embed
     return None
