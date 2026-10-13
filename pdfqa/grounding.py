@@ -27,7 +27,10 @@ from .claims import Claim, extract, normalise_text
 
 PROBLEMS = ("unsupported", "unit_mismatch", "wrong_citation")
 
-_SENTENCE_RE = re.compile(r".+?(?:[.!?](?:\s*\[\d+\])*(?=\s|$)|$)", re.DOTALL)
+# "120 Mio. euros" is one sentence: a magnitude abbreviation does not end it
+_SENTENCE_RE = re.compile(
+    r".+?(?:(?<!\bMio)(?<!\bMrd)(?<!\bTsd)(?<!\bmio)(?<!\bmrd)(?<!\btsd)[.!?](?:\s*\[\d+\])*(?=\s|$)|$)",
+    re.DOTALL)
 _CITE_RE = re.compile(r"\[(\d+)\]")
 _CITE_GROUP_RE = re.compile(r"(?:\[\d+\])+")
 # durations a per-day/week/... amount can be multiplied with; seconds-based units are not, since
@@ -96,7 +99,7 @@ def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
             by_span.setdefault((claim.start, claim.end, claim.part), []).append(claim)
         groups = list(_CITE_GROUP_RE.finditer(sentence.group(0)))
         for (start, end, _), readings in by_span.items():
-            cited = _citation_for(start, end, groups)
+            cited = _citation_for(start, end, groups, sentence.group(0))
             check = min((_check(c, indexed, cited, known) for c in readings), key=_rank)
             check.start += sentence.start()
             check.end += sentence.start()
@@ -137,12 +140,16 @@ def _sentences(answer: str):
             yield m, {int(n) for n in _CITE_RE.findall(m.group(0))}
 
 
-def _citation_for(start: int, end: int, groups: list[re.Match[str]]) -> set[int]:
+def _citation_for(start: int, end: int, groups: list[re.Match[str]], text: str) -> set[int]:
     """The citation a value belongs to: the next one after it in the sentence, else the last
-    one before it. "120 euros [1] and 28 days [2]" checks each value against its own excerpt."""
-    group = next((g for g in groups if g.start() >= end), None)
-    if group is None:
-        group = next((g for g in reversed(groups) if g.end() <= start), None)
+    one before it. "120 euros [1] and 28 days [2]" checks each value against its own excerpt.
+    A citation earlier in the value's own clause beats the next one behind a semicolon:
+    "according to [1], hotels cost 120 euros; according to [2], ..." is [1]."""
+    after = next((g for g in groups if g.start() >= end), None)
+    before = next((g for g in reversed(groups) if g.end() <= start), None)
+    if after and before and ";" in text[end:after.start()] and ";" not in text[before.end():start]:
+        after = None
+    group = after or before
     return {int(n) for n in _CITE_RE.findall(group.group(0))} if group else set()
 
 
