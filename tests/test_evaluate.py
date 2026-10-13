@@ -45,3 +45,9 @@ def test_missing_question_type_has_no_rate():
     summary = evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)]).summary()
     assert summary["correct_refusals"] is None
     assert summary["answer_accuracy"] == 1.0
+
+
+def test_case_document_may_be_given_with_its_folder():
+    index = Index([Chunk("hr.pdf", 3, "Employees receive 28 vacation days per year.")])
+    case = Case("How many vacation days?", "28 vacation days", "policies/hr.pdf", 3)
+    assert evaluate(index, [case]).summary()["hit@4"] == 1.0
