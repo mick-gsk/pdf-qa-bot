@@ -135,13 +135,23 @@ const LABELS = {
   unit_mismatch: (c) => `The excerpts give this number with another unit: ${c.evidence}`,
   wrong_citation: (c) => `This is in excerpt [${c.source}], not in the one cited`,
 };
+const WORST = ["supported", "derived", "wrong_citation", "unit_mismatch", "unsupported"];
 function annotate(text, checks) {
+  // both ends of a range ("4 to 6 weeks") share one span: show the worse status, both tooltips
+  const spans = new Map();
+  for (const c of checks) {
+    const key = `${c.start}:${c.end}`;
+    spans.set(key, [...(spans.get(key) || []), c]);
+  }
   let html = "", at = 0;
-  for (const c of [...checks].sort((a, b) => a.start - b.start)) {
-    if (c.start < at) continue;
-    html += cite(text.slice(at, c.start));
-    html += `<mark class="${c.status}" title="${esc(LABELS[c.status](c))}">${esc(text.slice(c.start, c.end))}</mark>`;
-    at = c.end;
+  for (const group of [...spans.values()].sort((a, b) => a[0].start - b[0].start)) {
+    const { start, end } = group[0];
+    if (start < at) continue;
+    const status = group.map(c => c.status).sort((a, b) => WORST.indexOf(b) - WORST.indexOf(a))[0];
+    const title = group.map(c => LABELS[c.status](c)).join("\n");
+    html += cite(text.slice(at, start));
+    html += `<mark class="${status}" title="${esc(title)}">${esc(text.slice(start, end))}</mark>`;
+    at = end;
   }
   return html + cite(text.slice(at));
 }
