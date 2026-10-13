@@ -29,6 +29,10 @@ PROBLEMS = ("unsupported", "unit_mismatch", "wrong_citation")
 
 _SENTENCE_RE = re.compile(r".+?(?:[.!?](?:\s*\[\d+\])*(?=\s|$)|$)", re.DOTALL)
 _CITE_RE = re.compile(r"\[(\d+)\]")
+_CITE_GROUP_RE = re.compile(r"(?:\[\d+\])+")
+# durations a per-day/week/... amount can be multiplied with; seconds-based units are not, since
+# "8 hours" is stored as 28800 s
+_PER = {"day", "week", "month", "year"}
 
 
 @dataclass
@@ -84,12 +88,14 @@ def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
     indexed = [_Source(s, extract(s), normalise_text(s)) for s in sources]
     known = {c.key for c in extract(question)}
     report = Report()
-    for sentence, cited in _sentences(answer):
+    for sentence, _ in _sentences(answer):
         # several readings of one number ("1,234") share a span; one supported reading is enough
         by_span: dict[tuple[int, int], list[Claim]] = {}
         for claim in extract(sentence.group(0)):
             by_span.setdefault((claim.start, claim.end), []).append(claim)
-        for readings in by_span.values():
+        groups = list(_CITE_GROUP_RE.finditer(sentence.group(0)))
+        for (start, end), readings in by_span.items():
+            cited = _citation_for(start, end, groups)
             check = min((_check(c, indexed, cited, known) for c in readings), key=_rank)
             check.start += sentence.start()
             check.end += sentence.start()
@@ -128,6 +134,15 @@ def _sentences(answer: str):
     for m in _SENTENCE_RE.finditer(answer):
         if m.group(0).strip():
             yield m, {int(n) for n in _CITE_RE.findall(m.group(0))}
+
+
+def _citation_for(start: int, end: int, groups: list[re.Match[str]]) -> set[int]:
+    """The citation a value belongs to: the next one after it in the sentence, else the last
+    one before it. "120 euros [1] and 28 days [2]" checks each value against its own excerpt."""
+    group = next((g for g in groups if g.start() >= end), None)
+    if group is None:
+        group = next((g for g in reversed(groups) if g.end() <= start), None)
+    return {int(n) for n in _CITE_RE.findall(group.group(0))} if group else set()
 
 
 def _rank(check: Check) -> int:
@@ -183,9 +198,10 @@ def _same(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
 
 
-def _same_date(a: str, b: str) -> bool:
-    (ya, rest_a), (yb, rest_b) = a.split("-", 1), b.split("-", 1)
-    return rest_a == rest_b and (ya == yb or "*" in (ya, yb))
+def _same_date(source: str, claim: str) -> bool:
+    """An answer may leave out the year, but not add one the source does not give."""
+    (ys, rest_s), (yc, rest_c) = source.split("-", 1), claim.split("-", 1)
+    return rest_s == rest_c and (ys == yc or yc == "*")
 
 
 def _derive(claim: Claim, facts: list[Claim]) -> str | None:
@@ -202,11 +218,36 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
             candidates += [(a + b, f"{ta} + {tb}"), (a - b, f"{ta} − {tb}")]
         if claim.unit == "%" and same_unit and b:
             candidates.append(((a - b) / b * 100, f"({ta} − {tb}) / {tb}"))
-        if claim.unit in (None, ua, ub):
+        product, quotient = _product_unit(ua, ub), _quotient_unit(ua, ub)
+        if product != _INVALID and claim.unit in (None, product):
             candidates.append((a * b, f"{ta} × {tb}"))
-            if b:
-                candidates.append((a / b, f"{ta} / {tb}"))
+        if b and quotient != _INVALID and claim.unit in (None, quotient):
+            candidates.append((a / b, f"{ta} / {tb}"))
         for value, how in candidates:
             if round(value, decimals) == round(target, decimals) and value > 0:
                 return how
     return None
+
+
+_INVALID = "invalid"
+
+
+def _product_unit(ua: str | None, ub: str | None) -> str | None:
+    """Unit of a × b: a count or a per-day/week duration times an amount. 160 euros × 28 euros
+    is not an amount of euros."""
+    if ua is None or ub is None:
+        return ua or ub
+    if ub in _PER and ua not in _PER:
+        return ua
+    if ua in _PER and ub not in _PER:
+        return ub
+    return _INVALID
+
+
+def _quotient_unit(ua: str | None, ub: str | None) -> str | None:
+    """Unit of a / b: same units give a ratio, dividing by a count or duration keeps the unit."""
+    if ua == ub:
+        return None
+    if ub is None or ub in _PER:
+        return ua
+    return _INVALID
