@@ -7,16 +7,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import time
 import uuid
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from .config import Settings
 from .llm import get_llm
@@ -108,12 +111,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             added[file.filename] = await run_in_threadpool(store.add_pdf, file.filename, data)
         return {"added": added, "documents": store.documents()}
 
-    @app.get("/documents/{name}", dependencies=auth, response_class=FileResponse)
-    def download(name: str) -> FileResponse:
-        path = store.path(name)
-        # Starlette encodes non-Latin names per RFC 5987 (filename*=utf-8''...)
-        return FileResponse(path, media_type="application/pdf", filename=path.name,
-                            content_disposition_type="inline")
+    @app.get("/documents/{name}", dependencies=auth, response_class=StreamingResponse)
+    def download(name: str) -> StreamingResponse:
+        # Open the file before returning: a delete that runs while the response is sent
+        # removes the name, but this handle still reads the whole file.
+        file = store.open(name)
+        filename = Path(file.name).name
+        quoted = quote(filename)  # non-Latin names per RFC 5987
+        disposition = (f"inline; filename*=utf-8''{quoted}" if quoted != filename
+                       else f'inline; filename="{filename}"')
+        return StreamingResponse(iter(lambda: file.read(64 * 1024), b""), media_type="application/pdf",
+                                 headers={"Content-Disposition": disposition,
+                                          "Content-Length": str(os.fstat(file.fileno()).st_size)},
+                                 background=BackgroundTask(file.close))
 
     @app.delete("/documents/{name}", dependencies=auth)
     def remove(name: str) -> dict:
