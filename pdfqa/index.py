@@ -126,7 +126,7 @@ class Index:
         index.add([Chunk(**c) for c in data["chunks"]])
         index.embed = embed
         index._vectors = data.get("vectors") or []
-        if embed and (len(index._vectors) != len(index.chunks)
+        if embed and index.chunks and (len(index._vectors) != len(index.chunks)
                       or data.get("embedding_model") != _model_name(embed)):
             # saved without vectors or with another embedding model: rebuild them once and
             # save, so the next start doesn't embed every chunk again
