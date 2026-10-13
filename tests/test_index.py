@@ -40,6 +40,48 @@ def test_hybrid_uses_embeddings_for_paraphrases():
     assert index.search("accommodation")[0][0].page == 2
 
 
+def test_vectors_from_another_embedding_model_are_rebuilt(tmp_path):
+    def old_model(texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+    def new_model(texts):
+        return [[1.0, 0.0] if "hotel" in t.lower() else [0.0, 1.0] for t in texts]
+
+    path = tmp_path / "index.json"
+    Index(CHUNKS, embed=old_model).save(path)
+    loaded = Index.load(path, embed=new_model)
+    assert loaded.vector("hotel")[0][0] == 1
+    assert len(loaded._vectors[0]) == 2
+
+
+def test_vectors_of_a_model_with_the_same_dimension_are_rebuilt_and_saved(tmp_path):
+    calls = []
+
+    def model(name):
+        def embed(texts):
+            calls.append(name)
+            return [[1.0, 0.0] for _ in texts]
+        embed.model = name
+        return embed
+
+    path = tmp_path / "index.json"
+    Index(CHUNKS, embed=model("a")).save(path)
+    Index.load(path, embed=model("b"))
+    assert calls == ["a", "b"]
+    Index.load(path, embed=model("b"))  # saved after the rebuild: no second rebuild
+    assert calls == ["a", "b"]
+
+
 def test_rrf_rewards_agreement():
     fused = _rrf([[(0, 9.0), (1, 5.0)], [(1, 0.9), (0, 0.1)], [(1, 0.5)]])
     assert fused[0][0] == 1
+
+
+def test_empty_index_is_not_embedded_on_load(tmp_path):
+    path = tmp_path / "index.json"
+    Index().save(path)
+
+    def embed(texts):
+        raise AssertionError("no chunks, nothing to embed")
+
+    assert Index.load(path, embed=embed).chunks == []
