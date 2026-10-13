@@ -150,6 +150,8 @@ def _sentences(answer: str) -> Iterator[tuple[_Sentence, set[int]]]:
     start = 0
     for m in _BOUNDARY_RE.finditer(answer):
         before = answer[start:m.start()]
+        if before.strip().isdigit():
+            continue  # list numbering: "1. Hotel costs ..."
         if _NO_BREAK_RE.search(before) and (not before[-1:].isdigit() or _MONTH_START_RE.match(answer, m.end())):
             continue
         yield from _sentence(answer, start, m.end())

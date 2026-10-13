@@ -86,3 +86,8 @@ def test_derived_needs_a_calculation_word():
     sources = ["The warranty is 2 years. Registering extends it to 3 years."]
     assert verify("The warranty is 5 years [1].", sources).checks[0].status == "unsupported"
     assert verify("Together that makes 5 years [1].", sources).checks[0].status == "derived"
+
+
+def test_numbered_list_items_are_not_values():
+    answer = "1. Hotels: up to 120 euros per night [1].\n2. Meals: 28 euros per day [1]."
+    assert statuses(answer) == [("120 euros", "supported"), ("28 euros", "supported")]
