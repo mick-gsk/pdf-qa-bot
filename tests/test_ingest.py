@@ -25,4 +25,8 @@ def test_chunks_respect_size_and_overlap():
 
 def test_headings_are_separate_sentences():
     text = "Remote Work\nEmployees may work remotely three days per\nweek. Core hours apply."
-    assert split_sentences(text) == ["Remote Work", "Employees may work remotely three days per week.", "Core hours apply."]
+    assert split_sentences(text) == [
+        "Remote Work",
+        "Employees may work remotely three days per week.",
+        "Core hours apply.",
+    ]

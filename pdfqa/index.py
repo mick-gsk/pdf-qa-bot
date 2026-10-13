@@ -12,9 +12,9 @@ import json
 import math
 import re
 from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Sequence
 
 from .ingest import Chunk
 
@@ -107,7 +107,7 @@ class Index:
         Path(path).write_text(json.dumps(data), encoding="utf-8")
 
     @classmethod
-    def load(cls, path: str | Path, embed: EmbedFn | None = None) -> "Index":
+    def load(cls, path: str | Path, embed: EmbedFn | None = None) -> Index:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         index = cls(embed=None)
         index.add([Chunk(**c) for c in data["chunks"]])
@@ -119,7 +119,7 @@ class Index:
 
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0

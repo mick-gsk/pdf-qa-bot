@@ -8,7 +8,8 @@ EMBEDDINGS:   openai | ollama | none                (default: none, keyword sear
 from __future__ import annotations
 
 import os
-from typing import Callable, Protocol, Sequence
+from collections.abc import Callable, Sequence
+from typing import Protocol
 
 import httpx
 
