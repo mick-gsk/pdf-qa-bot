@@ -6,7 +6,7 @@ Upload PDFs, ask questions in plain language, and get answers that cite the exac
 Every number, date and quote in an answer is checked against the cited page before it is shown.
 If the answer is not in your documents, the bot says so instead of guessing.
 
-![Demo: two PDFs uploaded, four questions asked; checked values are underlined, and the question the documents do not cover is refused](docs/demo.gif)
+![Demo: two PDFs uploaded, three questions asked; checked values are underlined, and the question the documents do not cover is refused](docs/demo.gif)
 
 Typical uses: an internal assistant for HR handbooks and policies, a support bot for product manuals,
 or quick answers from contracts and reports. The demo runs without an API key, in the extractive mode
@@ -129,6 +129,11 @@ Values are normalised before comparing, in English and German: "three weeks" and
 "1. Januar 2026". Numbers the user wrote in the question are accepted. The chat page underlines
 each checked value in green or red, with the source sentence as a tooltip.
 
+![A wrong amount marked in red: the answer says 150 euros, the cited page says 160](docs/value-check.png)
+
+For this image the model is scripted to give one wrong amount (150 instead of 160 euros for
+Paris), with `GROUNDING=flag` so the answer is shown with the mark instead of being corrected.
+
 `GROUNDING=repair` (default) gives the model one correction round with the list of problems and
 then drops sentences that are still wrong. `GROUNDING=flag` only marks them, `off` skips the check.
 
@@ -226,6 +231,9 @@ pytest --cov   # 153 tests
 ruff check .
 mypy
 ```
+
+`python docs/screenshots.py` regenerates the images in `docs/` from a real run (needs Playwright
+with Chromium and ffmpeg).
 
 CI runs these on Python 3.10, 3.12 and 3.13, prints the evaluation and the value-check benchmark,
 and builds the Docker image and smoke-tests it.
