@@ -84,7 +84,7 @@ def _extractive(question: str, sources: list[Source], index: Index, max_sentence
     scored, seen = [], set()
     for source in sources:
         for position, sentence in enumerate(split_sentences(source.text)):
-            if is_heading(sentence) or len(sentence.split()) < 3 or sentence in seen:
+            if is_heading(sentence) or sentence in seen:
                 continue
             seen.add(sentence)  # chunks overlap, so the same sentence can appear twice
             coverage = sum(w for t, w in weights.items() if t in set(tokenize(sentence))) / total

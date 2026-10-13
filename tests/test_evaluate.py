@@ -45,3 +45,10 @@ def test_eval_index_uses_the_configured_chunk_size():
     with mock.patch("pdfqa.evaluate.chunk_pdf", wraps=chunk_pdf) as chunk:
         run(CASES, chunk_words=40)
     assert {call.kwargs["max_words"] for call in chunk.call_args_list} == {40}
+
+
+def test_missing_question_type_has_no_rate():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    summary = evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)]).summary()
+    assert summary["correct_refusals"] is None
+    assert summary["answer_accuracy"] == 1.0
