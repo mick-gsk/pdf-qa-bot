@@ -101,6 +101,7 @@ def get_embedder() -> Callable[[Sequence[str]], list[list[float]]] | None:
             res = client.embeddings.create(model=model, input=list(texts))
             return [d.embedding for d in res.data]
 
+        embed.model = f"openai/{model}"  # type: ignore[attr-defined]
         return embed
     if kind == "ollama":
         host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -111,5 +112,6 @@ def get_embedder() -> Callable[[Sequence[str]], list[list[float]]] | None:
             res.raise_for_status()
             return res.json()["embeddings"]
 
+        embed.model = f"ollama/{model}"  # type: ignore[attr-defined]
         return embed
     return None
