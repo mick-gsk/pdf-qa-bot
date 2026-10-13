@@ -1,5 +1,5 @@
 from pdfqa.index import Index
-from pdfqa.ingest import chunk_pdf
+from pdfqa.ingest import Chunk, chunk_pdf
 from pdfqa.qa import NOT_FOUND, SYSTEM_PROMPT, answer, answer_stream
 
 
@@ -79,3 +79,12 @@ def test_stream_not_found_is_normalised(sample_pdf):
     llm.stream = lambda system, prompt: iter(["I couldn't find this in the ", "uploaded documents."])
     *_, (kind, final) = answer_stream("vacation", Index(chunk_pdf(sample_pdf)), llm)
     assert final.text == NOT_FOUND and final.sources == []
+
+
+def test_stream_without_llm_searches_once():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    calls = []
+    search = index.search
+    index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
+    events = list(answer_stream("How many vacation days?", index))
+    assert events[-1][0] == "done" and len(calls) == 1

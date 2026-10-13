@@ -77,7 +77,7 @@ def answer_stream(question: str, index: Index, llm: LLM | None = None,
     """
     sources = retrieve(question, index, k)
     if not sources or llm is None:
-        result = answer(question, index, llm, k)
+        result = _answer(question, sources, index, llm)  # reuse the search above
         yield "token", result.text
         yield "done", result
         return
