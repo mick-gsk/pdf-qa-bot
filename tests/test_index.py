@@ -75,3 +75,13 @@ def test_vectors_of_a_model_with_the_same_dimension_are_rebuilt_and_saved(tmp_pa
 def test_rrf_rewards_agreement():
     fused = _rrf([[(0, 9.0), (1, 5.0)], [(1, 0.9), (0, 0.1)], [(1, 0.5)]])
     assert fused[0][0] == 1
+
+
+def test_empty_index_is_not_embedded_on_load(tmp_path):
+    path = tmp_path / "index.json"
+    Index().save(path)
+
+    def embed(texts):
+        raise AssertionError("no chunks, nothing to embed")
+
+    assert Index.load(path, embed=embed).chunks == []
