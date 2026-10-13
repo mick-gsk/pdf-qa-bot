@@ -74,8 +74,10 @@ def evaluate(index: Index, cases: list[Case], llm: LLM | None = None, k: int = 4
 
         report.answerable += 1
         pages = [(c.doc, c.page) for c, _ in hits]
+        # chunks carry the file name only, so "policies/hr.pdf" in a case file is "hr.pdf"
+        target = (Path(case.doc).name if case.doc else None, case.page)
         for rank, page in enumerate(pages, start=1):
-            if page == (case.doc, case.page):
+            if page == target:
                 report.hits += 1
                 report.reciprocal_ranks += 1 / rank
                 break
