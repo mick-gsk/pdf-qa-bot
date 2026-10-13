@@ -101,7 +101,9 @@ def _extractive(question: str, sources: list[Source], index: Index, max_sentence
     ("company", "machine") with the question does not count as an answer, and a question
     whose key word appears nowhere in the documents is answered with NOT_FOUND.
     """
-    weights = {t: index.idf(t) for t in set(tokenize(question))}
+    # An unseen word counts like a rare one, not more: it is as likely a synonym ("limit" for
+    # "reimbursed up to") as a sign that the topic is missing.
+    weights = {t: index.idf(t, min_df=1) for t in set(tokenize(question))}
     total = sum(weights.values())
     if not total:
         return NOT_FOUND

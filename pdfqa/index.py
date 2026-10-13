@@ -65,9 +65,9 @@ class Index:
         if self.embed and chunks:
             self._vectors.extend(self.embed([c.text for c in chunks]))
 
-    def idf(self, term: str) -> float:
-        """BM25 inverse document frequency; terms that appear nowhere get the highest weight."""
-        n, df = len(self.chunks), self._df[term]
+    def idf(self, term: str, min_df: int = 0) -> float:
+        """BM25 inverse document frequency. min_df=1 weighs unseen terms like the rarest seen ones."""
+        n, df = len(self.chunks), max(self._df[term], min_df)
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
 
     def remove(self, doc: str) -> int:
