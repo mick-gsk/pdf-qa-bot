@@ -143,17 +143,20 @@ function annotate(text, checks) {
     const key = `${c.start}:${c.end}`;
     spans.set(key, [...(spans.get(key) || []), c]);
   }
+  // the server counts code points, JavaScript strings count UTF-16 units: slice by code point
+  const chars = Array.from(text);
+  const part = (a, b) => chars.slice(a, b).join("");
   let html = "", at = 0;
   for (const group of [...spans.values()].sort((a, b) => a[0].start - b[0].start)) {
     const { start, end } = group[0];
     if (start < at) continue;
     const status = group.map(c => c.status).sort((a, b) => WORST.indexOf(b) - WORST.indexOf(a))[0];
     const title = group.map(c => LABELS[c.status](c)).join("\n");
-    html += cite(text.slice(at, start));
-    html += `<mark class="${status}" title="${esc(title)}">${esc(text.slice(start, end))}</mark>`;
+    html += cite(part(at, start));
+    html += `<mark class="${status}" title="${esc(title)}">${esc(part(start, end))}</mark>`;
     at = end;
   }
-  return html + cite(text.slice(at));
+  return html + cite(part(at));
 }
 function checkLine(data) {
   if (!data.checks.length) return "";
