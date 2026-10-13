@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         settings = Settings.from_env()
     except ConfigError as exc:
         parser.error(str(exc))
-    k = args.k or settings.top_k
+    k = getattr(args, "k", None) or settings.top_k  # `index` has no -k
 
     if args.command == "eval":
         report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k)
