@@ -100,19 +100,61 @@
   .answer { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
             box-shadow: var(--shadow); padding: 16px 18px; }
   .a { white-space: pre-wrap; }
-  .a sup { color: var(--accent); font-weight: 600; }
+  .a sup a { color: var(--accent); font-weight: 600; font-size: 11px; text-decoration: none; padding: 0 1px; }
+  .a sup a:hover { text-decoration: underline; }
   .pending { color: var(--muted); }
-  .sources { margin-top: 12px; display: grid; gap: 6px; }
-  .src { border: 1px solid var(--line); padding: 8px 12px; background: var(--sunken); border-radius: 8px;
-         font-size: 13px; color: var(--muted); }
-  .src b { color: var(--text); }
-  .src a { color: var(--accent); text-decoration: none; }
-  .src a:hover { text-decoration: underline; }
-  mark { background: none; color: inherit; border-bottom: 2px solid; padding: 0 1px; cursor: help; }
+  mark { background: none; color: inherit; border-bottom: 2px solid; padding: 0 1px; border-radius: 2px; cursor: help; }
   mark.supported, mark.derived { border-color: var(--ok); }
   mark.derived { border-bottom-style: dashed; }
   mark.unsupported, mark.unit_mismatch, mark.wrong_citation { border-color: var(--bad); background: var(--bad-weak); }
-  .check { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  mark:hover, mark:focus-visible { background: var(--ok-weak); outline: 0; }
+  mark.unsupported:hover, mark.unit_mismatch:hover, mark.wrong_citation:hover,
+  mark.unsupported:focus-visible, mark.unit_mismatch:focus-visible, mark.wrong_citation:focus-visible { background: var(--bad-weak); }
+
+  .verdict { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; padding: 8px 12px; border-radius: 8px;
+             font-size: 13px; font-weight: 500; }
+  .verdict.ok { background: var(--ok-weak); color: var(--ok); }
+  .verdict.fixed { background: var(--warn-weak); color: var(--warn); }
+  .verdict.bad { background: var(--bad-weak); color: var(--bad); }
+  .verdict.none { background: var(--sunken); color: var(--muted); font-weight: 400; }
+  .verdict svg { margin-top: 2px; }
+  .verdict p { margin: 0; }
+  .verdict span { color: var(--text-2); font-weight: 400; }
+
+  .sources { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 4px; }
+  .sources-title { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+  details.src { border-radius: 8px; }
+  details.src[open] { background: var(--sunken); }
+  .src summary { list-style: none; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+                 padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .src summary::-webkit-details-marker { display: none; }
+  .src summary:hover { background: var(--sunken); }
+  .src .n { min-width: 22px; height: 22px; border-radius: 6px; background: var(--accent-weak); color: var(--accent);
+            font-size: 12px; font-weight: 600; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+  .src .name { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .src .name em { font-style: normal; color: var(--muted); font-weight: 400; }
+  .src .open { color: var(--muted); display: grid; place-items: center; padding: 2px; border-radius: 4px; }
+  .src .open:hover { color: var(--accent); }
+  .src .chev { color: var(--muted); transition: transform .15s; }
+  .src[open] .chev { transform: rotate(90deg); }
+  .src blockquote { margin: 0; padding: 4px 12px 12px 40px; font-size: 13px; color: var(--text-2); line-height: 1.6; }
+  .src blockquote .evidence { background: var(--ok-weak); color: var(--text); border-radius: 3px; padding: 1px 2px;
+                              box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .src.flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 2px var(--accent); } to { box-shadow: 0 0 0 2px transparent; } }
+
+  .tip { position: fixed; z-index: 10; max-width: 340px; background: var(--panel); color: var(--text);
+         border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+         box-shadow: 0 8px 24px rgba(16, 24, 40, .14), 0 2px 6px rgba(16, 24, 40, .08); pointer-events: none; }
+  .tip[hidden] { display: none; }
+  .tip + .tip { margin-top: 8px; }
+  .tip .t { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .tip .t.ok { color: var(--ok); }
+  .tip .t.bad { color: var(--bad); }
+  .tip q { display: block; margin-top: 4px; color: var(--text-2); }
+  .tip q::before, .tip q::after { content: none; }
+  .tip small { display: block; margin-top: 6px; color: var(--muted); }
+  .tip hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 
   .composer { padding: 12px 24px 18px; background: var(--bg); }
   .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
@@ -189,6 +231,7 @@
     </main>
   </div>
 </div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -301,19 +344,37 @@ $("empty").onclick = (e) => {
   if (example) ask(example.dataset.question);
 };
 
-const cite = (text) => esc(text).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>");
+// Citation markers link to the source card of the same turn.
+const cite = (text, turn) => esc(text).replace(/\[(\d+)\]/g, `<sup><a href="#src-${turn}-$1" data-src="${turn}-$1">[$1]</a></sup>`);
 
-// Underline each checked value: green if an excerpt backs it, red if not. The tooltip says where.
-const LABELS = {
-  supported: (c) => c.source ? `Found in [${c.source}]: ${c.evidence}` : `Found: ${c.evidence}`,
-  derived: (c) => `Calculated from the excerpts: ${c.evidence}`,
-  unsupported: () => "Not found in the cited excerpts",
-  unit_mismatch: (c) => `The excerpts give this number with another unit: ${c.evidence}`,
-  wrong_citation: (c) => `This is in excerpt [${c.source}], not in the one cited`,
+const ICON_OK = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>`;
+const ICON_ALERT = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+const ICON_INFO = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>`;
+const ICON_OPEN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg>`;
+const ICON_CHEV = `<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
+
+// What the check found for one value, shown when hovering or focusing it.
+const OK = ["supported", "derived"];
+const TITLES = {
+  supported: "Matches the source", derived: "Calculated from the source", unsupported: "Not in the cited source",
+  unit_mismatch: "Different unit in the source", wrong_citation: "In a different source",
 };
+function tipHtml(c, sources) {
+  const source = sources.find(s => s.n === c.source);
+  let body = "";
+  if (c.status === "unsupported") body = "No excerpt the answer cites contains this value.";
+  else if (c.evidence === "given in the question") body = "You wrote this value in the question.";
+  else if (c.evidence) body = c.evidence;
+  const where = source ? `[${source.n}] ${source.citation}` : "";
+  const kind = OK.includes(c.status) ? "ok" : "bad";
+  return `<div class="t ${kind}">${kind === "ok" ? ICON_OK : ICON_ALERT}${TITLES[c.status]}</div>` +
+    (body ? `<q>${esc(body)}</q>` : "") + (where ? `<small>${esc(where)}</small>` : "");
+}
+
+// Underline each checked value: green if an excerpt backs it, red if not.
 const WORST = ["supported", "derived", "wrong_citation", "unit_mismatch", "unsupported"];
-function annotate(text, checks) {
-  // both ends of a range ("4 to 6 weeks") share one span: show the worse status, both tooltips
+function annotate(text, checks, sources, turn) {
+  // both ends of a range ("4 to 6 weeks") share one span: show the worse status, both results
   const spans = new Map();
   for (const c of checks) {
     const key = `${c.start}:${c.end}`;
@@ -327,22 +388,71 @@ function annotate(text, checks) {
     const { start, end } = group[0];
     if (start < at) continue;
     const status = group.map(c => c.status).sort((a, b) => WORST.indexOf(b) - WORST.indexOf(a))[0];
-    const title = group.map(c => LABELS[c.status](c)).join("\n");
-    html += cite(part(at, start));
-    html += `<mark class="${status}" title="${esc(title)}">${esc(part(start, end))}</mark>`;
+    const tip = group.map(c => tipHtml(c, sources)).join("<hr>");
+    const label = group.map(c => TITLES[c.status]).join(", ");
+    html += cite(part(at, start), turn);
+    html += `<mark class="${status}" tabindex="0" aria-label="${esc(part(start, end))}: ${esc(label)}" data-tip="${esc(tip)}">${esc(part(start, end))}</mark>`;
     at = end;
   }
-  return html + cite(part(at));
+  return html + cite(part(at), turn);
 }
-function checkLine(data) {
-  if (!data.checks.length) return "";
-  const bad = data.checks.filter(c => !["supported", "derived"].includes(c.status)).length;
+
+function verdict(data) {
+  if (!data.sources.length) return "";
   const n = data.checks.length;
-  let line = bad ? `${bad} of ${n} values not found in the sources` : `${n} value${n > 1 ? "s" : ""} checked against the sources`;
-  if (data.repaired) line += " · corrected after the first draft";
-  return `<div class="check">${line}</div>`;
+  if (!n) return `<div class="verdict none">${ICON_INFO}<p>No amounts, dates or quotes in this answer to check.</p></div>`;
+  const bad = data.checks.filter(c => !OK.includes(c.status)).length;
+  if (bad) return `<div class="verdict bad">${ICON_ALERT}<p>${bad} of ${plural(n, "value")} not found in the sources <span>· marked in red</span></p></div>`;
+  if (data.repaired) return `<div class="verdict fixed">${ICON_OK}<p>${plural(n, "value")} checked <span>· the first draft had values the sources don't back and was corrected</span></p></div>`;
+  return `<div class="verdict ok">${ICON_OK}<p>${plural(n, "value")} checked against the sources <span>· hover or tap a value to see where it comes from</span></p></div>`;
 }
-const sourceHtml = (s) => `<div class="src"><a data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank"><b>[${s.n}] ${esc(s.citation)}</b></a><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`;
+
+// One collapsible card per cited excerpt. The sentences the check matched are highlighted.
+function sourceHtml(s, checks, turn) {
+  const quotes = [...new Set(checks.filter(c => c.source === s.n && c.evidence && s.text.includes(c.evidence)).map(c => c.evidence))];
+  let text = esc(s.text);
+  for (const q of quotes) text = text.split(esc(q)).join(`<span class="evidence">${esc(q)}</span>`);
+  const [file, page] = [s.doc || s.citation, s.page ? `p. ${s.page}` : ""];
+  return `<details class="src" id="src-${turn}-${s.n}">
+    <summary><span class="n">${s.n}</span><span class="name">${esc(file)} <em>${page}</em></span>
+      <a class="open" data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank" aria-label="Open ${esc(file)} at ${page}" title="Open the PDF at this page">${ICON_OPEN}</a>${ICON_CHEV}</summary>
+    <blockquote>${text}</blockquote>
+  </details>`;
+}
+
+// One tooltip element, moved to the value under the pointer or keyboard focus.
+const tip = $("tip");
+function showTip(mark) {
+  tip.innerHTML = mark.dataset.tip;
+  tip.hidden = false;
+  const r = mark.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - 8);
+  const top = r.top - t.height - 8 > 8 ? r.top - t.height - 8 : r.bottom + 8;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+const hideTip = () => { tip.hidden = true; };
+for (const [type, show] of [["mouseover", true], ["focusin", true], ["mouseout", false], ["focusout", false]]) {
+  document.addEventListener(type, (e) => {
+    const mark = e.target.closest && e.target.closest("mark[data-tip]");
+    if (mark) show ? showTip(mark) : hideTip();
+  });
+}
+$("scroll").addEventListener("scroll", hideTip);
+
+// A citation marker opens its source card.
+document.addEventListener("click", (e) => {
+  const link = e.target.closest("a[data-src]");
+  if (!link) return;
+  e.preventDefault();
+  const card = $(`src-${link.dataset.src}`);
+  if (!card) return;
+  card.open = true;
+  card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  card.classList.remove("flash");
+  void card.offsetWidth;
+  card.classList.add("flash");
+});
 
 // Reads the server-sent events from /ask/stream: "token" pieces, then "done" with the final answer.
 async function* readEvents(res) {
@@ -363,12 +473,14 @@ async function* readEvents(res) {
 
 const scrollDown = () => { const s = $("scroll"); s.scrollTop = s.scrollHeight; };
 
+let turns = 0;
 async function ask(question) {
   question = question.trim();
   if (!question || $("send").disabled) return;
   $("send").disabled = true;
+  const id = ++turns;
   $("log").insertAdjacentHTML("beforeend", `<div class="turn"><div class="question">${esc(question)}</div>
-    <div class="answer"><div class="a pending">Searching the documents…</div><div class="sources"></div></div></div>`);
+    <div class="answer"><div class="a pending">Searching the documents…</div></div></div>`);
   renderEmpty();
   const turn = $("log").lastElementChild;
   const show = (html) => { const a = turn.querySelector(".a"); a.classList.remove("pending"); a.innerHTML = html; };
@@ -378,11 +490,13 @@ async function ask(question) {
     if (!res.ok) { show(esc((await res.json()).detail)); return; }
     let text = "";
     for await (const [kind, data] of readEvents(res)) {
-      if (kind === "token") show(cite(text += data));
+      if (kind === "token") show(cite(text += data, id));
       if (kind === "error") show(esc(data));
       if (kind === "done") {
-        show(annotate(data.answer, data.checks) + checkLine(data));
-        turn.querySelector(".sources").innerHTML = data.sources.map(sourceHtml).join("");
+        show(annotate(data.answer, data.checks, data.sources, id));
+        turn.querySelector(".answer").insertAdjacentHTML("beforeend", verdict(data) + (data.sources.length
+          ? `<div class="sources"><div class="sources-title">Sources</div>${data.sources.map(s => sourceHtml(s, data.checks, id)).join("")}</div>`
+          : ""));
       }
       scrollDown();
     }
