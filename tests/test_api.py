@@ -118,3 +118,8 @@ def test_unexpected_error_carries_request_id(tmp_path):
     res = c.get("/documents", headers={"X-Request-ID": "abc"})
     assert res.status_code == 500
     assert res.json()["request_id"] == "abc" and res.headers["X-Request-ID"] == "abc"
+
+
+def test_non_ascii_token_can_authenticate(tmp_path):
+    c = TestClient(create_app(Settings(data_dir=tmp_path, api_token="pässwort")))
+    assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 200

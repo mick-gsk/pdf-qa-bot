@@ -35,8 +35,9 @@ def require_token(token: str | None):
     """Dependency that checks `Authorization: Bearer <token>` when API_TOKEN is set."""
 
     def check(authorization: str = Header(default="")) -> None:
-        # compare bytes: compare_digest rejects str with non-ASCII characters
-        if token and not secrets.compare_digest(authorization.encode(), f"Bearer {token}".encode()):
+        # compare bytes: compare_digest rejects str with non-ASCII characters. Starlette decodes
+        # headers as Latin-1, so encoding back that way gives the bytes the client sent.
+        if token and not secrets.compare_digest(authorization.encode("latin-1"), f"Bearer {token}".encode()):
             raise HTTPException(401, "Missing or wrong API token.", headers={"WWW-Authenticate": "Bearer"})
 
     return check
