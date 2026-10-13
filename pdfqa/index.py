@@ -119,9 +119,6 @@ class Index:
         if not self.embed or not self._vectors:
             return []
         q = self.embed([query])[0]
-        if len(q) != len(self._vectors[0]):
-            # vectors saved with another embedding model; rebuild them with the current one
-            self._vectors = self.embed([c.text for c in self.chunks])
         scores = [(i, _cosine(q, v)) for i, v in enumerate(self._vectors)]
         return sorted(scores, key=lambda s: s[1], reverse=True)
 
@@ -136,7 +133,8 @@ class Index:
     # --- persistence ---------------------------------------------------
 
     def save(self, path: str | Path) -> None:
-        data = {"chunks": [asdict(c) for c in self.chunks], "vectors": self._vectors}
+        data = {"chunks": [asdict(c) for c in self.chunks], "vectors": self._vectors,
+                "embedding_model": _model_name(self.embed) if self._vectors else ""}
         Path(path).write_text(json.dumps(data), encoding="utf-8")
 
     @classmethod
@@ -146,9 +144,18 @@ class Index:
         index.add([Chunk(**c) for c in data["chunks"]])
         index.embed = embed
         index._vectors = data.get("vectors") or []
-        if embed and len(index._vectors) != len(index.chunks):
+        if embed and (len(index._vectors) != len(index.chunks)
+                      or data.get("embedding_model") != _model_name(embed)):
+            # saved without vectors or with another embedding model: rebuild them once and
+            # save, so the next start doesn't embed every chunk again
             index._vectors = embed([c.text for c in index.chunks])
+            index.save(path)
         return index
+
+
+def _model_name(embed: EmbedFn | None) -> str:
+    """Which embedding model made the vectors; get_embedder() sets `model` on its functions."""
+    return getattr(embed, "model", None) or getattr(embed, "__qualname__", "") if embed else ""
 
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
