@@ -38,3 +38,10 @@ def test_each_question_is_retrieved_once():
     index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
     evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)])
     assert len(calls) == 1
+
+
+def test_missing_question_type_has_no_rate():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    summary = evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)]).summary()
+    assert summary["correct_refusals"] is None
+    assert summary["answer_accuracy"] == 1.0
