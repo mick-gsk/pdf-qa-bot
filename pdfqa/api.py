@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import secrets
 import threading
@@ -16,24 +15,25 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .config import Settings
 from .index import Index
 from .ingest import chunk_pdf
 from .llm import get_embedder, get_llm
 from .qa import answer
 
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 STATIC = Path(__file__).parent / "static"
 
 
 class Store:
     """Uploaded PDFs plus the index built from them, kept in DATA_DIR."""
 
-    def __init__(self, data_dir: str | Path) -> None:
-        self.dir = Path(data_dir)
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.dir = settings.data_dir
         self.docs = self.dir / "docs"
         self.docs.mkdir(parents=True, exist_ok=True)
         self.index_path = self.dir / "index.json"
-        self.embed = get_embedder()
+        self.embed = get_embedder(settings)
         self.index = Index.load(self.index_path, self.embed) if self.index_path.exists() else Index(embed=self.embed)
         # FastAPI runs sync endpoints in a thread pool; uploads and resets must not interleave.
         self.lock = threading.Lock()
@@ -49,7 +49,7 @@ class Store:
             raise HTTPException(409, f"{safe} is already indexed.")
         path.write_bytes(data)
         try:
-            chunks = chunk_pdf(path)
+            chunks = chunk_pdf(path, max_words=self.settings.chunk_words)
         except Exception as exc:  # pypdf raises many different errors on broken files
             path.unlink(missing_ok=True)
             raise HTTPException(422, f"Could not read {safe}: {exc}") from exc
@@ -73,7 +73,7 @@ class Store:
 
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
-    k: int = Field(default=4, ge=1, le=10)
+    k: int | None = Field(default=None, ge=1, le=10, description="excerpts to use; default TOP_K")
 
 
 def require_token(token: str | None):
@@ -86,12 +86,14 @@ def require_token(token: str | None):
     return check
 
 
-def create_app(data_dir: str | Path | None = None, api_token: str | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings.from_env()
     app = FastAPI(title="PDF Q&A Bot", version="1.0.0")
-    store = Store(data_dir or os.getenv("DATA_DIR", "data"))
-    llm = get_llm()
+    store = Store(settings)
+    llm = get_llm(settings)
     app.state.store = store
-    api_token = api_token or os.getenv("API_TOKEN")
+    api_token = settings.api_token
+    max_bytes = settings.max_upload_mb * 1024 * 1024
     auth = [Depends(require_token(api_token))]
 
     @app.get("/", include_in_schema=False)
@@ -115,8 +117,8 @@ def create_app(data_dir: str | Path | None = None, api_token: str | None = None)
             if not (file.filename or "").lower().endswith(".pdf"):
                 raise HTTPException(415, f"{file.filename}: only PDF files are supported.")
             data = await file.read()
-            if len(data) > MAX_UPLOAD_BYTES:
-                raise HTTPException(413, f"{file.filename} is larger than 20 MB.")
+            if len(data) > max_bytes:
+                raise HTTPException(413, f"{file.filename} is larger than {settings.max_upload_mb} MB.")
             added[file.filename] = store.add_pdf(file.filename, data)
         return {"added": added, "documents": store.index.documents()}
 
@@ -129,7 +131,7 @@ def create_app(data_dir: str | Path | None = None, api_token: str | None = None)
     def ask(q: Question) -> dict:
         if not len(store.index):
             raise HTTPException(400, "Upload at least one PDF first.")
-        result = answer(q.question, store.index, llm, k=q.k)
+        result = answer(q.question, store.index, llm, k=q.k or settings.top_k)
         return {"answer": result.text, "found": result.found, "mode": result.mode,
                 "sources": [asdict(s) for s in result.sources]}
 

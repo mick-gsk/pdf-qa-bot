@@ -1,10 +1,11 @@
 from fastapi.testclient import TestClient
 
 from pdfqa.api import create_app
+from pdfqa.config import Settings
 
 
 def client(tmp_path):
-    return TestClient(create_app(tmp_path))
+    return TestClient(create_app(Settings(data_dir=tmp_path)))
 
 
 def test_health_reports_extractive_mode(tmp_path):
@@ -59,7 +60,7 @@ def test_reset(tmp_path, sample_pdf):
 
 
 def test_token_is_required_when_configured(tmp_path):
-    c = TestClient(create_app(tmp_path, api_token="s3cret"))
+    c = TestClient(create_app(Settings(data_dir=tmp_path, api_token="s3cret")))
     assert c.get("/health").json()["auth"] is True
     assert c.get("/documents").status_code == 401
     assert c.get("/documents", headers={"Authorization": "Bearer wrong"}).status_code == 401
