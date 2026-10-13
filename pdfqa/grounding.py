@@ -271,7 +271,8 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
         return None
     # compare at the precision the answer wrote, in the unit it wrote: "251 ml" is not 0.25 l
     scale = target / claim.number
-    decimals = len(re.split(r"[.,]", claim.text.split()[0])[-1]) if re.match(r"\d+[.,]\d+\b", claim.text) else 0
+    written = re.search(r"\d[.,](\d+)\b", claim.text)
+    decimals = len(written.group(1)) if written else 0
     values = {(c.value, c.unit, c.text) for c in facts if c.kind == "amount" and c.value is not None}
     for (a, ua, ta), (b, ub, tb) in itertools.permutations(values, 2):
         candidates = []

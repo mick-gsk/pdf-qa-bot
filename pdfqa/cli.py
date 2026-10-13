@@ -52,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "eval":
-        report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k)
+        report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k,
+                              chunk_words=settings.chunk_words)
         print(json.dumps(report.summary(), indent=2))
         if args.verbose:
             print("\n".join(report.failures), file=sys.stderr)

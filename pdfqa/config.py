@@ -39,6 +39,9 @@ class Settings:
     top_k: int = 4
     log_level: str = "INFO"
     grounding: str = "repair"
+    # kept here because a key that is only in .env is not in os.environ for the SDKs to find
+    anthropic_api_key: str | None = field(default=None, repr=False)
+    openai_api_key: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -66,6 +69,8 @@ class Settings:
             top_k=_int(env, "TOP_K", cls.top_k, 1, 10),
             log_level=env.get("LOG_LEVEL", cls.log_level).upper(),
             grounding=grounding,
+            anthropic_api_key=env.get("ANTHROPIC_API_KEY") or None,
+            openai_api_key=env.get("OPENAI_API_KEY") or None,
         )
 
 

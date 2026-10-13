@@ -124,3 +124,17 @@ def test_answer_may_not_add_a_year_the_source_does_not_give():
 def test_citation_after_an_abbreviation_ends_the_sentence():
     answer = "Hotels up to 150 euros, taxis etc. [1] You get 28 vacation days [2]."
     assert strip_unsupported(answer, verify(answer, SOURCES)) == "You get 28 vacation days [2]."
+
+
+def test_both_ends_of_a_range_are_checked():
+    checks = verify("Use 20-220 ml [1].", ["Use 20 ml of water."]).checks
+    assert [c.status for c in checks] == ["supported", "unsupported"]
+
+
+def test_answer_may_not_add_a_unit_to_a_bare_source_number():
+    assert [c.status for c in verify("It costs 120 euros [1].", ["The limit is 120."]).checks] == ["unsupported"]
+
+
+def test_decimal_comma_keeps_its_precision_when_deriving():
+    assert [c.status for c in verify("Together 1,4 euros [1].", ["1 euro and 0,1 euros."]).checks] == [
+        "unsupported"]
