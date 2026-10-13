@@ -65,6 +65,14 @@ class Index:
         if self.embed and chunks:
             self._vectors.extend(self.embed([c.text for c in chunks]))
 
+    def copy(self) -> Index:
+        """Independent copy. The store changes a copy and swaps it in, so a running search
+        never sees an index that is half updated."""
+        new = Index(embed=self.embed, k1=self.k1, b=self.b)
+        new.chunks, new._tokens, new._lengths = list(self.chunks), list(self._tokens), list(self._lengths)
+        new._df, new._vectors = Counter(self._df), list(self._vectors)
+        return new
+
     def idf(self, term: str) -> float:
         """BM25 inverse document frequency; terms that appear nowhere get the highest weight."""
         n, df = len(self.chunks), self._df[term]
