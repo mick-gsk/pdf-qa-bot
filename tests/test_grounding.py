@@ -108,3 +108,17 @@ def test_answer_may_not_add_a_year_the_source_does_not_give():
     assert verify("It closes on 24 December [1].", sources).grounded
     # the other way round is fine: the answer leaves out a year the source gives
     assert verify("The rules apply from 1 January [2].", SOURCES).grounded
+
+
+def test_both_ends_of_a_range_are_checked():
+    checks = verify("Use 20-220 ml [1].", ["Use 20 ml of water."]).checks
+    assert [c.status for c in checks] == ["supported", "unsupported"]
+
+
+def test_answer_may_not_add_a_unit_to_a_bare_source_number():
+    assert [c.status for c in verify("It costs 120 euros [1].", ["The limit is 120."]).checks] == ["unsupported"]
+
+
+def test_decimal_comma_keeps_its_precision_when_deriving():
+    assert [c.status for c in verify("Together 1,4 euros [1].", ["1 euro and 0,1 euros."]).checks] == [
+        "unsupported"]

@@ -137,6 +137,7 @@ class Claim:
     unit: str | None = None  # canonical unit, None for a bare number
     key: str = ""
     number: float | None = None  # as written, before unit conversion: 25 for "25 minutes"
+    part: int = 0  # 1 for the upper end of a range ("20 to 220 ml")
 
     def __str__(self) -> str:
         return self.text
@@ -223,11 +224,11 @@ def extract(text: str) -> list[Claim]:
         unit, factor = _UNITS[raw_unit] if raw_unit else (None, 1.0)
         magnitude = _magnitude(m)
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])
-        for number in numbers:
+        for part, number in enumerate(numbers):
             for value in parse_number(number):
                 value *= magnitude
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, unit,
-                           _amount_key(value * factor, unit), value))
+                           _amount_key(value * factor, unit), value, part))
     return sorted(claims, key=lambda c: (c.start, c.key))
 
 

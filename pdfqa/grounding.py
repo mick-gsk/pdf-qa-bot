@@ -89,12 +89,13 @@ def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
     known = {c.key for c in extract(question)}
     report = Report()
     for sentence, _ in _sentences(answer):
-        # several readings of one number ("1,234") share a span; one supported reading is enough
-        by_span: dict[tuple[int, int], list[Claim]] = {}
+        # several readings of one number ("1,234") share a span; one supported reading is enough.
+        # Both ends of a range are checked separately.
+        by_span: dict[tuple[int, int, int], list[Claim]] = {}
         for claim in extract(sentence.group(0)):
-            by_span.setdefault((claim.start, claim.end), []).append(claim)
+            by_span.setdefault((claim.start, claim.end, claim.part), []).append(claim)
         groups = list(_CITE_GROUP_RE.finditer(sentence.group(0)))
-        for (start, end), readings in by_span.items():
+        for (start, end, _), readings in by_span.items():
             cited = _citation_for(start, end, groups)
             check = min((_check(c, indexed, cited, known) for c in readings), key=_rank)
             check.start += sentence.start()
@@ -189,7 +190,7 @@ def _find(claim: Claim, source: _Source) -> str | None:
         if claim.kind == "time" and c.key == claim.key:
             return source.evidence(c)
         if (claim.kind == "amount" and _same(c.value, claim.value)
-                and (claim.unit is None or c.unit in (None, claim.unit))):
+                and (claim.unit is None or c.unit == claim.unit)):
             return source.evidence(c)
     return None
 
@@ -209,7 +210,9 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     target = claim.value
     if target is None or (claim.unit is None and abs(target) < 10):
         return None  # small bare numbers are too easy to hit by accident
-    decimals = len(claim.text.split(".")[-1]) if re.search(r"\d\.\d+\b", claim.text) else 0
+    # compare at the precision the answer wrote, with a decimal point or comma
+    written = re.search(r"\d[.,](\d+)\b", claim.text)
+    decimals = len(written.group(1)) if written else 0
     values = {(c.value, c.unit, c.text) for c in facts if c.kind == "amount" and c.value is not None}
     for (a, ua, ta), (b, ub, tb) in itertools.permutations(values, 2):
         same_unit = ua == ub
