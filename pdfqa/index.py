@@ -135,7 +135,9 @@ class Index:
 
 def _model_name(embed: EmbedFn | None) -> str:
     """Which embedding model made the vectors; get_embedder() sets `model` on its functions."""
-    return getattr(embed, "model", None) or getattr(embed, "__qualname__", "") if embed else ""
+    if embed is None:
+        return ""
+    return str(getattr(embed, "model", None) or getattr(embed, "__qualname__", ""))
 
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
