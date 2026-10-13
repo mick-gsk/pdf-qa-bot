@@ -49,3 +49,18 @@ def test_hybrid_uses_embeddings_for_paraphrases():
 def test_rrf_rewards_agreement():
     fused = _rrf([[(0, 9.0), (1, 5.0)], [(1, 0.9), (0, 0.1)], [(1, 0.5)]])
     assert fused[0][0] == 1
+
+
+def test_remove_document_keeps_vectors_of_the_rest():
+    calls = []
+
+    def embed(texts):
+        calls.append(list(texts))
+        return [[float(len(t)), 1.0] for t in texts]
+
+    index = Index(CHUNKS, embed=embed)
+    assert index.remove("a.pdf") == 2
+    assert index.documents() == ["b.pdf"] and len(calls) == 1
+    assert index._vectors == [[float(len(CHUNKS[2].text)), 1.0]]
+    assert index.search("laptop")[0][0].doc == "b.pdf"
+    assert index.remove("missing.pdf") == 0

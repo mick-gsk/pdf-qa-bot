@@ -1,3 +1,5 @@
+from unittest import mock
+
 from fastapi.testclient import TestClient
 
 from pdfqa.api import create_app
@@ -43,7 +45,9 @@ def test_rejects_non_pdf_and_duplicates(tmp_path, sample_pdf):
 
 
 def test_broken_pdf_is_rejected_cleanly(tmp_path):
-    res = client(tmp_path).post("/documents", files={"files": ("bad.pdf", b"not a pdf", "application/pdf")})
+    c = client(tmp_path)
+    assert c.post("/documents", files={"files": ("bad.pdf", b"not a pdf", "application/pdf")}).status_code == 415
+    res = c.post("/documents", files={"files": ("bad.pdf", b"%PDF-1.7 garbage", "application/pdf")})
     assert res.status_code == 422
     assert not (tmp_path / "docs" / "bad.pdf").exists()
 
@@ -65,3 +69,31 @@ def test_token_is_required_when_configured(tmp_path):
     assert c.get("/documents").status_code == 401
     assert c.get("/documents", headers={"Authorization": "Bearer wrong"}).status_code == 401
     assert c.get("/documents", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_download_and_remove_single_document(tmp_path, sample_pdf):
+    c = client(tmp_path)
+    data = sample_pdf.read_bytes()
+    c.post("/documents", files=[("files", ("a.pdf", data, "application/pdf")),
+                                ("files", ("b.pdf", data, "application/pdf"))])
+    res = c.get("/documents/a.pdf")
+    assert res.status_code == 200 and res.content == data
+    assert res.headers["content-type"] == "application/pdf"
+    assert c.delete("/documents/a.pdf").json() == {"documents": ["b.pdf"]}
+    assert c.get("/documents/a.pdf").status_code == 404
+    assert c.get("/documents/..%2Fapi.py").status_code == 404
+    assert c.post("/ask", json={"question": "vacation days"}).json()["sources"][0]["doc"] == "b.pdf"
+
+
+def test_llm_failure_returns_502(tmp_path, sample_pdf):
+    c = client(tmp_path)
+    c.post("/documents", files={"files": ("h.pdf", sample_pdf.read_bytes(), "application/pdf")})
+    with mock.patch("pdfqa.api.answer", side_effect=ConnectionError("refused")):
+        res = c.post("/ask", json={"question": "vacation"})
+    assert res.status_code == 502
+
+
+def test_responses_carry_request_id(tmp_path):
+    c = client(tmp_path)
+    assert len(c.get("/health").headers["X-Request-ID"]) == 12
+    assert c.get("/health", headers={"X-Request-ID": "abc"}).headers["X-Request-ID"] == "abc"

@@ -70,6 +70,18 @@ class Index:
         n, df = len(self.chunks), self._df[term]
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
 
+    def remove(self, doc: str) -> int:
+        """Drop all chunks of one document. Stored vectors are kept, so nothing is re-embedded."""
+        keep = [c for c in self.chunks if c.doc != doc]
+        removed = len(self.chunks) - len(keep)
+        if removed:
+            vectors = [v for c, v in zip(self.chunks, self._vectors, strict=False) if c.doc != doc]
+            self.chunks, self._tokens, self._lengths, self._df = [], [], [], Counter()
+            embed, self.embed = self.embed, None
+            self.add(keep)
+            self.embed, self._vectors = embed, vectors
+        return removed
+
     def documents(self) -> list[str]:
         return sorted({c.doc for c in self.chunks})
 

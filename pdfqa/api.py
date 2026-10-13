@@ -5,70 +5,25 @@
 
 from __future__ import annotations
 
-import re
+import logging
 import secrets
-import threading
+import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .config import Settings
-from .index import Index
-from .ingest import chunk_pdf
-from .llm import get_embedder, get_llm
+from .llm import get_llm
 from .qa import answer
+from .store import Store, StoreError
 
 STATIC = Path(__file__).parent / "static"
-
-
-class Store:
-    """Uploaded PDFs plus the index built from them, kept in DATA_DIR."""
-
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-        self.dir = settings.data_dir
-        self.docs = self.dir / "docs"
-        self.docs.mkdir(parents=True, exist_ok=True)
-        self.index_path = self.dir / "index.json"
-        self.embed = get_embedder(settings)
-        self.index = Index.load(self.index_path, self.embed) if self.index_path.exists() else Index(embed=self.embed)
-        # FastAPI runs sync endpoints in a thread pool; uploads and resets must not interleave.
-        self.lock = threading.Lock()
-
-    def add_pdf(self, filename: str, data: bytes) -> int:
-        with self.lock:
-            return self._add_pdf(filename, data)
-
-    def _add_pdf(self, filename: str, data: bytes) -> int:
-        safe = re.sub(r"[^\w.\- ]", "_", Path(filename).name) or "document.pdf"
-        path = self.docs / safe
-        if safe in self.index.documents():
-            raise HTTPException(409, f"{safe} is already indexed.")
-        path.write_bytes(data)
-        try:
-            chunks = chunk_pdf(path, max_words=self.settings.chunk_words)
-        except Exception as exc:  # pypdf raises many different errors on broken files
-            path.unlink(missing_ok=True)
-            raise HTTPException(422, f"Could not read {safe}: {exc}") from exc
-        if not chunks:
-            path.unlink(missing_ok=True)
-            raise HTTPException(422, f"{safe} has no extractable text (scanned PDF? run OCR first).")
-        self.index.add(chunks)
-        self.index.save(self.index_path)
-        return len(chunks)
-
-    def reset(self) -> None:
-        with self.lock:
-            self._reset()
-
-    def _reset(self) -> None:
-        for pdf in self.docs.glob("*"):
-            pdf.unlink()
-        self.index_path.unlink(missing_ok=True)
-        self.index = Index(embed=self.embed)
+log = logging.getLogger("pdfqa")
 
 
 class Question(BaseModel):
@@ -88,13 +43,36 @@ def require_token(token: str | None):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    app = FastAPI(title="PDF Q&A Bot", version="1.0.0")
+    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    app = FastAPI(title="PDF Q&A Bot", version="1.1.0")
     store = Store(settings)
     llm = get_llm(settings)
     app.state.store = store
-    api_token = settings.api_token
     max_bytes = settings.max_upload_mb * 1024 * 1024
-    auth = [Depends(require_token(api_token))]
+    auth = [Depends(require_token(settings.api_token))]
+    log.info("LLM: %s, embeddings: %s, %d chunks loaded",
+             llm.name if llm else "none", settings.embeddings, len(store.index))
+
+    @app.middleware("http")
+    async def request_log(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+        request.state.request_id = request_id
+        start = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        log.info("%s %s %d %.0fms id=%s", request.method, request.url.path, response.status_code,
+                 (time.perf_counter() - start) * 1000, request_id)
+        return response
+
+    @app.exception_handler(StoreError)
+    async def store_error(request: Request, exc: StoreError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", "-")
+        log.exception("unhandled error id=%s", request_id)
+        return JSONResponse({"detail": "Internal error.", "request_id": request_id}, status_code=500)
 
     @app.get("/", include_in_schema=False)
     def page() -> FileResponse:
@@ -104,11 +82,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"status": "ok", "llm": llm.name if llm else "none (extractive mode)",
                 "embeddings": bool(store.embed), "chunks": len(store.index),
-                "auth": bool(api_token)}
+                "auth": bool(settings.api_token)}
 
     @app.get("/documents", dependencies=auth)
     def documents() -> dict:
-        return {"documents": store.index.documents(), "chunks": len(store.index)}
+        return {"documents": store.documents(), "chunks": len(store.index)}
 
     @app.post("/documents", status_code=201, dependencies=auth)
     async def upload(files: list[UploadFile] = File(...)) -> dict:
@@ -119,8 +97,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             data = await file.read()
             if len(data) > max_bytes:
                 raise HTTPException(413, f"{file.filename} is larger than {settings.max_upload_mb} MB.")
-            added[file.filename] = store.add_pdf(file.filename, data)
-        return {"added": added, "documents": store.index.documents()}
+            if not data.startswith(b"%PDF-"):
+                raise HTTPException(415, f"{file.filename} is not a PDF file.")
+            # parsing and embedding are blocking; keep them off the event loop
+            added[file.filename] = await run_in_threadpool(store.add_pdf, file.filename, data)
+        return {"added": added, "documents": store.documents()}
+
+    @app.get("/documents/{name}", dependencies=auth, response_class=FileResponse)
+    def download(name: str) -> FileResponse:
+        return FileResponse(store.path(name), media_type="application/pdf",
+                            headers={"Content-Disposition": f'inline; filename="{store.path(name).name}"'})
+
+    @app.delete("/documents/{name}", dependencies=auth)
+    def remove(name: str) -> dict:
+        store.remove(name)
+        return {"documents": store.documents()}
 
     @app.delete("/documents", dependencies=auth)
     def reset() -> dict:
@@ -131,7 +122,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def ask(q: Question) -> dict:
         if not len(store.index):
             raise HTTPException(400, "Upload at least one PDF first.")
-        result = answer(q.question, store.index, llm, k=q.k or settings.top_k)
+        try:
+            result = answer(q.question, store.index, llm, k=q.k or settings.top_k)
+        except Exception as exc:
+            log.warning("LLM request failed: %s", exc)
+            raise HTTPException(502, "The language model did not respond. Try again in a moment.") from exc
         return {"answer": result.text, "found": result.found, "mode": result.mode,
                 "sources": [asdict(s) for s in result.sources]}
 
