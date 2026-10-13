@@ -1,8 +1,9 @@
 from pathlib import Path
+from unittest import mock
 
 from pdfqa.evaluate import Case, evaluate, run
 from pdfqa.index import Index
-from pdfqa.ingest import Chunk
+from pdfqa.ingest import Chunk, chunk_pdf
 
 CASES = Path(__file__).parent.parent / "examples" / "eval.json"
 
@@ -38,6 +39,12 @@ def test_each_question_is_retrieved_once():
     index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
     evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)])
     assert len(calls) == 1
+
+
+def test_eval_index_uses_the_configured_chunk_size():
+    with mock.patch("pdfqa.evaluate.chunk_pdf", wraps=chunk_pdf) as chunk:
+        run(CASES, chunk_words=40)
+    assert {call.kwargs["max_words"] for call in chunk.call_args_list} == {40}
 
 
 def test_missing_question_type_has_no_rate():

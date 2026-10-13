@@ -67,10 +67,30 @@ class Index:
         if self.embed and chunks:
             self._vectors.extend(self.embed([c.text for c in chunks]))
 
+    def copy(self) -> Index:
+        """Independent copy. The store changes a copy and swaps it in, so a running search
+        never sees an index that is half updated."""
+        new = Index(embed=self.embed, k1=self.k1, b=self.b)
+        new.chunks, new._tokens, new._lengths = list(self.chunks), list(self._tokens), list(self._lengths)
+        new._df, new._vectors = Counter(self._df), list(self._vectors)
+        return new
+
     def idf(self, term: str) -> float:
         """BM25 inverse document frequency; terms that appear nowhere get the highest weight."""
         n, df = len(self.chunks), self._df[term]
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
+
+    def remove(self, doc: str) -> int:
+        """Drop all chunks of one document. Stored vectors are kept, so nothing is re-embedded."""
+        keep = [c for c in self.chunks if c.doc != doc]
+        removed = len(self.chunks) - len(keep)
+        if removed:
+            vectors = [v for c, v in zip(self.chunks, self._vectors, strict=False) if c.doc != doc]
+            self.chunks, self._tokens, self._lengths, self._df = [], [], [], Counter()
+            embed, self.embed = self.embed, None
+            self.add(keep)
+            self.embed, self._vectors = embed, vectors
+        return removed
 
     def documents(self) -> list[str]:
         return sorted({c.doc for c in self.chunks})

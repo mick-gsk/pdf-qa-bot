@@ -83,6 +83,21 @@ def test_rrf_rewards_agreement():
     assert fused[0][0] == 1
 
 
+def test_remove_document_keeps_vectors_of_the_rest():
+    calls = []
+
+    def embed(texts):
+        calls.append(list(texts))
+        return [[float(len(t)), 1.0] for t in texts]
+
+    index = Index(CHUNKS, embed=embed)
+    assert index.remove("a.pdf") == 2
+    assert index.documents() == ["b.pdf"] and len(calls) == 1
+    assert index._vectors == [[float(len(CHUNKS[2].text)), 1.0]]
+    assert index.search("laptop")[0][0].doc == "b.pdf"
+    assert index.remove("missing.pdf") == 0
+
+
 def test_inflected_stopwords_are_dropped_like_their_base_form():
     assert tokenize("What are employees getting?") == tokenize("Employees get") == ["employe"]
 

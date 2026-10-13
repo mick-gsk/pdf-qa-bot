@@ -25,6 +25,8 @@ class Source:
     citation: str
     text: str
     score: float
+    doc: str = ""
+    page: int = 0
 
 
 @dataclass
@@ -50,7 +52,7 @@ def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
         hits = index.search(question, k=k)
     if not hits:
         return Answer(NOT_FOUND, [], "none")
-    sources = [Source(n, chunk.citation, chunk.text, round(score, 4))
+    sources = [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
                for n, (chunk, score) in enumerate(hits, start=1)]
     if llm is None:
         text = _extractive(question, sources, index)

@@ -18,7 +18,8 @@
   .drop { border:2px dashed var(--line); border-radius:10px; padding:18px; text-align:center; color:var(--muted); cursor:pointer; }
   .drop.over { border-color:var(--accent); background:var(--accent-soft); }
   .docs { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .chip { background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:2px 10px; font-size:13px; }
+  .chip { background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:2px 4px 2px 10px; font-size:13px; display:inline-flex; align-items:center; gap:2px; }
+  .chip button { background:none; color:inherit; padding:0 6px; font-size:15px; line-height:1; }
   form.ask { display:flex; gap:8px; }
   input[type=text] { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
   button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
@@ -31,6 +32,8 @@
   .sources { margin-top:8px; display:grid; gap:6px; }
   .src { border-left:3px solid var(--accent); padding:6px 10px; background:var(--bg); border-radius:0 6px 6px 0; font-size:13px; color:var(--muted); }
   .src b { color:var(--text); }
+  .src a { color:var(--accent); cursor:pointer; text-decoration:none; }
+  .src a:hover { text-decoration:underline; }
   .status { font-size:13px; color:var(--muted); margin-top:8px; min-height:1.2em; }
   .row { display:flex; justify-content:space-between; align-items:center; }
 </style>
@@ -74,7 +77,8 @@ async function api(path, options = {}) {
 async function refresh() {
   const [docs, health] = await Promise.all([api("/documents").then(r => r.json()), fetch("/health").then(r => r.json())]);
   docs.documents = docs.documents || [];
-  $("docs").innerHTML = docs.documents.map(d => `<span class="chip">${esc(d)}</span>`).join("");
+  $("docs").innerHTML = docs.documents.map(d =>
+    `<span class="chip">${esc(d)}<button title="Remove" data-doc="${esc(d)}">×</button></span>`).join("");
   $("reset").hidden = !docs.documents.length;
   $("mode").textContent = `Model: ${health.llm} · ${health.chunks} chunks indexed`;
 }
@@ -98,6 +102,22 @@ $("file").onchange = (e) => upload(e.target.files);
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); };
+$("docs").onclick = async (e) => {
+  const doc = e.target.dataset.doc;
+  if (!doc) return;
+  await api(`/documents/${encodeURIComponent(doc)}`, { method: "DELETE" });
+  refresh();
+};
+
+// Links open /documents/<name>#page=N directly. With API_TOKEN set, a plain link can't send the
+// header, so fetch the PDF with it and open a blob URL instead.
+$("log").onclick = async (e) => {
+  const link = e.target.closest("a[data-doc]");
+  if (!link || !localStorage.getItem("pdfqa-token")) return;
+  e.preventDefault();
+  const res = await api(link.pathname);
+  if (res.ok) window.open(`${URL.createObjectURL(await res.blob())}${link.hash}`, "_blank");
+};
 $("reset").onclick = async () => { await api("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
 
 $("ask").onsubmit = async (e) => {
@@ -109,7 +129,7 @@ $("ask").onsubmit = async (e) => {
   const data = await res.json();
   $("send").disabled = false;
   const answer = res.ok ? esc(data.answer).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>") : esc(data.detail);
-  const sources = res.ok ? data.sources.map(s => `<div class="src"><b>[${s.n}] ${esc(s.citation)}</b><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`).join("") : "";
+  const sources = res.ok ? data.sources.map(s => `<div class="src"><a data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank"><b>[${s.n}] ${esc(s.citation)}</b></a><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`).join("") : "";
   $("log").insertAdjacentHTML("afterbegin", `<div class="msg"><div class="q">${esc(question)}</div><div class="a">${answer}</div><div class="sources">${sources}</div></div>`);
   $("question").value = "";
 };
