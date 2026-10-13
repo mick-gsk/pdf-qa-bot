@@ -41,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     k = getattr(args, "k", None) or settings.top_k  # "index" has no -k
 
     if args.command == "eval":
-        report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k)
+        report = evaluate.run(args.cases, get_llm(settings), get_embedder(settings), k=k,
+                              chunk_words=settings.chunk_words)
         print(json.dumps(report.summary(), indent=2))
         if args.verbose:
             print("\n".join(report.failures), file=sys.stderr)
