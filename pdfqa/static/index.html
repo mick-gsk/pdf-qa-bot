@@ -259,12 +259,13 @@ async function api(path, options = {}) {
   return res;
 }
 
-let documents = [];
+let documents = [], grounding = "repair";
 
 async function refresh() {
   const [docs, health] = await Promise.all([api("/documents").then(r => r.json()), fetch("/health").then(r => r.json())]);
   const files = docs.files || (docs.documents || []).map(name => ({ name }));
   documents = files.map(f => f.name);
+  grounding = health.grounding || grounding;
   $("files").innerHTML = files.map(f => `
     <li class="file">
       ${ICON_FILE}
@@ -365,7 +366,8 @@ function tipHtml(c, sources) {
   if (c.status === "unsupported") body = "No excerpt the answer cites contains this value.";
   else if (c.evidence === "given in the question") body = "You wrote this value in the question.";
   else if (c.evidence) body = c.evidence;
-  const where = source ? `[${source.n}] ${source.citation}` : "";
+  // a wrong_citation points at an excerpt the answer does not cite, so it is not in the source list
+  const where = source ? `[${source.n}] ${source.citation}` : c.source ? `Excerpt ${c.source}, which the answer does not cite` : "";
   const kind = OK.includes(c.status) ? "ok" : "bad";
   return `<div class="t ${kind}">${kind === "ok" ? ICON_OK : ICON_ALERT}${TITLES[c.status]}</div>` +
     (body ? `<q>${esc(body)}</q>` : "") + (where ? `<small>${esc(where)}</small>` : "");
@@ -400,6 +402,7 @@ function annotate(text, checks, sources, turn) {
 function verdict(data) {
   if (!data.sources.length) return `<div class="verdict none">${ICON_INFO}<p>No excerpt answers this question, so the bot doesn't guess.</p></div>`;
   const n = data.checks.length;
+  if (grounding === "off") return `<div class="verdict none">${ICON_INFO}<p>Value check is off <span>· GROUNDING=off</span></p></div>`;
   if (!n) return `<div class="verdict none">${ICON_INFO}<p>No amounts, dates or quotes in this answer to check.</p></div>`;
   const bad = data.checks.filter(c => !OK.includes(c.status)).length;
   if (bad) return `<div class="verdict bad">${ICON_ALERT}<p>${bad} of ${plural(n, "value")} not found in the sources <span>· marked in red</span></p></div>`;

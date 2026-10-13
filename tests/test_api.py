@@ -14,6 +14,7 @@ def client(tmp_path):
 def test_health_reports_extractive_mode(tmp_path):
     body = client(tmp_path).get("/health").json()
     assert body["status"] == "ok" and body["llm"].startswith("none")
+    assert body["grounding"] == "repair"
 
 
 def test_upload_then_ask(tmp_path, sample_pdf):
