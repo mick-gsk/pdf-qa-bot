@@ -1,0 +1,35 @@
+[project]
+name = "pdf-qa-bot"
+version = "1.0.0"
+description = "Ask questions about your PDFs and get answers with page citations (RAG with BM25 + optional embeddings)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "pypdf>=4.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.40"]
+dev = ["pytest>=8", "reportlab>=4"]
+
+[project.scripts]
+pdfqa = "pdfqa.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pdfqa*"]
+
+[tool.setuptools.package-data]
+pdfqa = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

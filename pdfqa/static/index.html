@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Q&amp;A Bot</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#677084; --line:#e2e5eb; --accent:#2457d6; --accent-soft:#e8eefc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b1f27; --text:#e6e9ef; --muted:#9aa3b5; --line:#2b313c; --accent:#7aa2ff; --accent-soft:#1f2a44; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:820px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:18px; text-align:center; color:var(--muted); cursor:pointer; }
+  .drop.over { border-color:var(--accent); background:var(--accent-soft); }
+  .docs { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:2px 10px; font-size:13px; }
+  form.ask { display:flex; gap:8px; }
+  input[type=text] { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.link { background:none; color:var(--muted); padding:0; font-size:13px; text-decoration:underline; }
+  button:disabled { opacity:.6; cursor:default; }
+  .msg { margin:14px 0; }
+  .q { font-weight:600; }
+  .a { white-space:pre-wrap; margin-top:4px; }
+  .a sup { color:var(--accent); font-weight:600; }
+  .sources { margin-top:8px; display:grid; gap:6px; }
+  .src { border-left:3px solid var(--accent); padding:6px 10px; background:var(--bg); border-radius:0 6px 6px 0; font-size:13px; color:var(--muted); }
+  .src b { color:var(--text); }
+  .status { font-size:13px; color:var(--muted); margin-top:8px; min-height:1.2em; }
+  .row { display:flex; justify-content:space-between; align-items:center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PDF Q&amp;A Bot</h1>
+  <p class="sub">Upload PDFs, ask questions, get answers with page citations.</p>
+
+  <section class="card">
+    <div class="drop" id="drop">Drop PDFs here or click to choose<input id="file" type="file" accept="application/pdf" multiple hidden></div>
+    <div class="row"><div class="docs" id="docs"></div><button class="link" id="reset" hidden>Remove all</button></div>
+    <div class="status" id="upload-status"></div>
+  </section>
+
+  <section class="card">
+    <form class="ask" id="ask">
+      <input type="text" id="question" placeholder="Ask something about your documents…" autocomplete="off">
+      <button id="send">Ask</button>
+    </form>
+    <div class="status" id="mode"></div>
+    <div id="log"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function refresh() {
+  const [docs, health] = await Promise.all([fetch("/documents").then(r => r.json()), fetch("/health").then(r => r.json())]);
+  $("docs").innerHTML = docs.documents.map(d => `<span class="chip">${esc(d)}</span>`).join("");
+  $("reset").hidden = !docs.documents.length;
+  $("mode").textContent = `Model: ${health.llm} · ${health.chunks} chunks indexed`;
+}
+
+async function upload(files) {
+  if (!files.length) return;
+  const body = new FormData();
+  [...files].forEach(f => body.append("files", f));
+  $("upload-status").textContent = "Indexing…";
+  const res = await fetch("/documents", { method: "POST", body });
+  const data = await res.json();
+  $("upload-status").textContent = res.ok
+    ? Object.entries(data.added).map(([f, n]) => `${f}: ${n} chunks`).join(" · ")
+    : data.detail;
+  refresh();
+}
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+$("file").onchange = (e) => upload(e.target.files);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files); };
+$("reset").onclick = async () => { await fetch("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
+
+$("ask").onsubmit = async (e) => {
+  e.preventDefault();
+  const question = $("question").value.trim();
+  if (!question) return;
+  $("send").disabled = true;
+  const res = await fetch("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+  const data = await res.json();
+  $("send").disabled = false;
+  const answer = res.ok ? esc(data.answer).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>") : esc(data.detail);
+  const sources = res.ok ? data.sources.map(s => `<div class="src"><b>[${s.n}] ${esc(s.citation)}</b><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`).join("") : "";
+  $("log").insertAdjacentHTML("afterbegin", `<div class="msg"><div class="q">${esc(question)}</div><div class="a">${answer}</div><div class="sources">${sources}</div></div>`);
+  $("question").value = "";
+};
+
+refresh();
+</script>
+</body>
+</html>
