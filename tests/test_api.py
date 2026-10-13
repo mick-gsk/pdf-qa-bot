@@ -97,3 +97,8 @@ def test_responses_carry_request_id(tmp_path):
     c = client(tmp_path)
     assert len(c.get("/health").headers["X-Request-ID"]) == 12
     assert c.get("/health", headers={"X-Request-ID": "abc"}).headers["X-Request-ID"] == "abc"
+
+
+def test_non_ascii_token_header_is_rejected_not_an_error(tmp_path):
+    c = TestClient(create_app(Settings(data_dir=tmp_path, api_token="s3cret")))
+    assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 401

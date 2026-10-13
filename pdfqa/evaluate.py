@@ -61,7 +61,8 @@ def load_cases(path: str | Path) -> tuple[list[Path], list[Case]]:
 def evaluate(index: Index, cases: list[Case], llm: LLM | None = None, k: int = 4) -> Report:
     report = Report(mode=llm.name if llm else "extractive", k=k)
     for case in cases:
-        result = answer(case.question, index, llm, k=k)
+        hits = index.search(case.question, k=k)
+        result = answer(case.question, index, llm, k=k, hits=hits)
         if case.expect is None:
             report.unanswerable += 1
             if result.found:
@@ -71,7 +72,7 @@ def evaluate(index: Index, cases: list[Case], llm: LLM | None = None, k: int = 4
             continue
 
         report.answerable += 1
-        pages = [(c.doc, c.page) for c, _ in index.search(case.question, k=k)]
+        pages = [(c.doc, c.page) for c, _ in hits]
         if (case.doc, case.page) in pages:
             report.hits += 1
             report.reciprocal_ranks += 1 / (pages.index((case.doc, case.page)) + 1)

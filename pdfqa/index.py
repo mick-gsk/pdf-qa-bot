@@ -111,6 +111,9 @@ class Index:
         if not self.embed or not self._vectors:
             return []
         q = self.embed([query])[0]
+        if len(q) != len(self._vectors[0]):
+            # vectors saved with another embedding model; rebuild them with the current one
+            self._vectors = self.embed([c.text for c in self.chunks])
         scores = [(i, _cosine(q, v)) for i, v in enumerate(self._vectors)]
         return sorted(scores, key=lambda s: s[1], reverse=True)
 
