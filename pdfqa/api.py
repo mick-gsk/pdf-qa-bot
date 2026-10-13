@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import time
@@ -14,12 +15,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import Settings
 from .llm import get_llm
-from .qa import answer
+from .qa import Answer, answer, answer_stream
 from .store import Store, StoreError
 
 STATIC = Path(__file__).parent / "static"
@@ -127,10 +128,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             log.warning("LLM request failed: %s", exc)
             raise HTTPException(502, "The language model did not respond. Try again in a moment.") from exc
-        return {"answer": result.text, "found": result.found, "mode": result.mode,
-                "sources": [asdict(s) for s in result.sources]}
+        return as_json(result)
+
+    @app.post("/ask/stream", dependencies=auth)
+    def ask_stream(q: Question) -> StreamingResponse:
+        """Server-sent events: `token` events with answer text, then one `done` event like /ask."""
+        if not len(store.index):
+            raise HTTPException(400, "Upload at least one PDF first.")
+
+        def events():
+            try:
+                for kind, value in answer_stream(q.question, store.index, llm, k=q.k or settings.top_k):
+                    data = as_json(value) if isinstance(value, Answer) else value
+                    yield f"event: {kind}\ndata: {json.dumps(data)}\n\n"
+            except Exception as exc:
+                log.warning("LLM stream failed: %s", exc)
+                message = "The language model did not respond. Try again in a moment."
+                yield f"event: error\ndata: {json.dumps(message)}\n\n"
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     return app
+
+
+def as_json(result: Answer) -> dict:
+    return {"answer": result.text, "found": result.found, "mode": result.mode,
+            "sources": [asdict(s) for s in result.sources]}
 
 
 app = create_app()

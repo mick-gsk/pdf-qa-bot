@@ -120,18 +120,52 @@ $("log").onclick = async (e) => {
 };
 $("reset").onclick = async () => { await api("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
 
+const cite = (text) => esc(text).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>");
+const sourceHtml = (s) => `<div class="src"><a data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank"><b>[${s.n}] ${esc(s.citation)}</b></a><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`;
+
+// Reads the server-sent events from /ask/stream: "token" pieces, then "done" with the final answer.
+async function* readEvents(res) {
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const [kind, data] = buffer.slice(0, end).split("\n");
+      buffer = buffer.slice(end + 2);
+      yield [kind.slice(7), JSON.parse(data.slice(6))];
+    }
+  }
+}
+
 $("ask").onsubmit = async (e) => {
   e.preventDefault();
   const question = $("question").value.trim();
   if (!question) return;
   $("send").disabled = true;
-  const res = await api("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
-  const data = await res.json();
-  $("send").disabled = false;
-  const answer = res.ok ? esc(data.answer).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>") : esc(data.detail);
-  const sources = res.ok ? data.sources.map(s => `<div class="src"><a data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank"><b>[${s.n}] ${esc(s.citation)}</b></a><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`).join("") : "";
-  $("log").insertAdjacentHTML("afterbegin", `<div class="msg"><div class="q">${esc(question)}</div><div class="a">${answer}</div><div class="sources">${sources}</div></div>`);
   $("question").value = "";
+  $("log").insertAdjacentHTML("afterbegin", `<div class="msg"><div class="q">${esc(question)}</div><div class="a">…</div><div class="sources"></div></div>`);
+  const msg = $("log").firstElementChild;
+  const show = (html) => { msg.querySelector(".a").innerHTML = html; };
+  try {
+    const res = await api("/ask/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+    if (!res.ok) { show(esc((await res.json()).detail)); return; }
+    let text = "";
+    for await (const [kind, data] of readEvents(res)) {
+      if (kind === "token") show(cite(text += data));
+      if (kind === "error") show(esc(data));
+      if (kind === "done") {
+        show(cite(data.answer));
+        msg.querySelector(".sources").innerHTML = data.sources.map(sourceHtml).join("");
+      }
+    }
+  } catch (err) {
+    show("Connection lost. Please try again.");
+  } finally {
+    $("send").disabled = false;
+  }
 };
 
 refresh();

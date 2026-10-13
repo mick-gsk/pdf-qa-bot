@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from .index import Index, tokenize
@@ -45,19 +46,45 @@ def build_prompt(question: str, sources: list[Source]) -> str:
     return f"Excerpts:\n\n{excerpts}\n\nQuestion: {question}"
 
 
+def retrieve(question: str, index: Index, k: int = 4) -> list[Source]:
+    return [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
+            for n, (chunk, score) in enumerate(index.search(question, k=k), start=1)]
+
+
 def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4) -> Answer:
-    hits = index.search(question, k=k)
-    if not hits:
+    sources = retrieve(question, index, k)
+    if not sources:
         return Answer(NOT_FOUND, [], "none")
-    sources = [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
-               for n, (chunk, score) in enumerate(hits, start=1)]
     if llm is None:
-        text = _extractive(question, sources, index)
-        return Answer(text, _cited_only(text, sources) if text != NOT_FOUND else [], "extractive")
-    text = llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)).strip()
-    if NOT_FOUND.rstrip(".") in text:
-        return Answer(NOT_FOUND, [], llm.name)
-    return Answer(text, _cited_only(text, sources), llm.name)
+        return _finish(_extractive(question, sources, index), sources, "extractive")
+    return _finish(llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)), sources, llm.name)
+
+
+def answer_stream(question: str, index: Index, llm: LLM | None = None,
+                  k: int = 4) -> Iterator[tuple[str, str | Answer]]:
+    """Like answer(), but yields ("token", text) pieces as the model writes and ends with ("done", Answer).
+
+    The final Answer is authoritative: if the model ends up saying it found nothing, the
+    client should replace the streamed text with it.
+    """
+    sources = retrieve(question, index, k)
+    if not sources or llm is None:
+        result = answer(question, index, llm, k)
+        yield "token", result.text
+        yield "done", result
+        return
+    parts = []
+    for piece in llm.stream(SYSTEM_PROMPT, build_prompt(question, sources)):
+        parts.append(piece)
+        yield "token", piece
+    yield "done", _finish("".join(parts), sources, llm.name)
+
+
+def _finish(text: str, sources: list[Source], mode: str) -> Answer:
+    text = text.strip()
+    if not text or NOT_FOUND.rstrip(".") in text:
+        return Answer(NOT_FOUND, [], mode)
+    return Answer(text, _cited_only(text, sources), mode)
 
 
 def _cited_only(text: str, sources: list[Source]) -> list[Source]:

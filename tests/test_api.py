@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -97,3 +98,22 @@ def test_responses_carry_request_id(tmp_path):
     c = client(tmp_path)
     assert len(c.get("/health").headers["X-Request-ID"]) == 12
     assert c.get("/health", headers={"X-Request-ID": "abc"}).headers["X-Request-ID"] == "abc"
+
+
+def parse_sse(text):
+    events = []
+    for block in text.strip().split("\n\n"):
+        kind, data = block.split("\n", 1)
+        events.append((kind.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
+    return events
+
+
+def test_stream_ends_with_the_full_answer(tmp_path, sample_pdf):
+    c = client(tmp_path)
+    c.post("/documents", files={"files": ("h.pdf", sample_pdf.read_bytes(), "application/pdf")})
+    res = c.post("/ask/stream", json={"question": "How many vacation days do full-time employees get?"})
+    assert res.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(res.text)
+    assert [k for k, _ in events] == ["token", "done"]
+    assert "28 vacation days" in events[-1][1]["answer"]
+    assert events[-1][1]["sources"][0]["page"] == 1

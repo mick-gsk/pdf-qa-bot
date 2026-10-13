@@ -81,8 +81,9 @@ class OllamaLLM:
         with httpx.stream("POST", f"{self.host}/api/chat", json=body, timeout=120) as res:
             res.raise_for_status()
             for line in res.iter_lines():
-                if line:
-                    yield json.loads(line).get("message", {}).get("content", "")
+                piece = json.loads(line).get("message", {}).get("content", "") if line else ""
+                if piece:
+                    yield piece
 
 
 def get_llm(settings: Settings) -> LLM | None:
