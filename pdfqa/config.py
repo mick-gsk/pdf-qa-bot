@@ -87,7 +87,7 @@ def _check(name: str, value: str, allowed: tuple[str, ...]) -> None:
 
 def _int(env: dict[str, str], name: str, default: int, low: int, high: int) -> int:
     raw = env.get(name)
-    if raw in (None, ""):
+    if not raw:  # unset or empty
         return default
     try:
         value = int(raw)
