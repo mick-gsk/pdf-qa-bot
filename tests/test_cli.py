@@ -50,3 +50,15 @@ def test_ask_uses_the_configured_grounding(tmp_path, sample_pdf, monkeypatch):
     monkeypatch.setattr("pdfqa.cli.answer", lambda *a, **kw: seen.append(kw["grounding"]) or answer(*a, **kw))
     main(["--index", index, "ask", "What is the hotel limit in Paris?"])
     assert seen == ["off"]
+
+
+def test_pdfs_indexed_on_the_command_line_can_be_downloaded(tmp_path, sample_pdf, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from pdfqa.api import create_app
+    from pdfqa.config import Settings
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert main(["index", str(sample_pdf)]) == 0
+    res = TestClient(create_app(Settings(data_dir=tmp_path))).get(f"/documents/{sample_pdf.name}")
+    assert res.status_code == 200 and res.content == sample_pdf.read_bytes()

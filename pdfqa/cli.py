@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from .index import Index
 from .ingest import chunk_pdf
 from .llm import get_embedder, get_llm
 from .qa import answer
+from .store import safe_name
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,9 +66,13 @@ def main(argv: list[str] | None = None) -> int:
     index = Index.load(index_path, embed) if index_path.exists() else Index(embed=embed)
 
     if args.command == "index":
+        docs = settings.data_dir / "docs"
         for pdf in args.pdfs:
             chunks = chunk_pdf(pdf, max_words=settings.chunk_words)
             index.add(chunks)
+            if args.index is None:  # the web app's index: keep the file so it can be opened there
+                docs.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(pdf, docs / safe_name(pdf.name))
             print(f"{pdf.name}: {len(chunks)} chunks")
         index_path.parent.mkdir(parents=True, exist_ok=True)
         index.save(index_path)
