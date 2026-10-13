@@ -1,5 +1,5 @@
 from pdfqa.index import Index
-from pdfqa.ingest import chunk_pdf
+from pdfqa.ingest import Chunk, chunk_pdf
 from pdfqa.qa import NOT_FOUND, SYSTEM_PROMPT, answer
 
 
@@ -54,3 +54,13 @@ def test_extractive_skips_weak_matches(sample_pdf):
 def test_extractive_lists_only_cited_sources(sample_pdf):
     result = answer("vacation days full-time", Index(chunk_pdf(sample_pdf)))
     assert [s.citation for s in result.sources] == ["employee-handbook.pdf, p. 1"]
+
+
+def test_extractive_refuses_when_only_common_words_match(sample_pdf):
+    # "company" appears in the handbook, "car" does not
+    assert answer("Is there a company car policy?", Index(chunk_pdf(sample_pdf))).text == NOT_FOUND
+
+
+def test_short_sentence_can_be_the_answer():
+    index = Index([Chunk("terms.pdf", 2, "Shipping is free within Germany. No refunds.")])
+    assert answer("Any refunds?", index).text == "No refunds. [1]"

@@ -1,0 +1,38 @@
+{
+  "documents": ["employee-handbook.pdf", "espresso-manual.pdf"],
+  "cases": [
+    {"question": "How many vacation days do full-time employees get?", "doc": "employee-handbook.pdf", "page": 1, "expect": "28 vacation days"},
+    {"question": "How many unused vacation days can I carry over?", "doc": "employee-handbook.pdf", "page": 1, "expect": "five"},
+    {"question": "When do I need a doctor's note?", "doc": "employee-handbook.pdf", "page": 1, "expect": "third day"},
+    {"question": "How many days per week can I work from home?", "doc": "employee-handbook.pdf", "page": 2, "expect": "three days"},
+    {"question": "Can I work remotely from abroad?", "doc": "employee-handbook.pdf", "page": 2, "expect": "20 working days"},
+    {"question": "What are the core hours?", "doc": "employee-handbook.pdf", "page": 2, "expect": "10:00"},
+    {"question": "How much is the home office allowance?", "doc": "employee-handbook.pdf", "page": 2, "expect": "30 euros"},
+    {"question": "What is the hotel limit in Paris?", "doc": "employee-handbook.pdf", "page": 3, "expect": "160 euros"},
+    {"question": "When is first class train travel allowed?", "doc": "employee-handbook.pdf", "page": 3, "expect": "longer than four hours"},
+    {"question": "What is the daily meal allowance on business trips?", "doc": "employee-handbook.pdf", "page": 3, "expect": "28 euros"},
+    {"question": "What is the deadline for expense reports?", "doc": "employee-handbook.pdf", "page": 3, "expect": "30 days"},
+
+    {"question": "How much water does the tank hold?", "doc": "espresso-manual.pdf", "page": 2, "expect": "1.8"},
+    {"question": "How long does the machine take to heat up?", "doc": "espresso-manual.pdf", "page": 2, "expect": "45 seconds"},
+    {"question": "Which grind setting is recommended for espresso?", "doc": "espresso-manual.pdf", "page": 3, "expect": "4 to 6"},
+    {"question": "Can I use flavored beans?", "doc": "espresso-manual.pdf", "page": 3, "expect": "flavored"},
+    {"question": "How do I change the cup volume?", "doc": "espresso-manual.pdf", "page": 3, "expect": "3 seconds"},
+    {"question": "How often should I replace the water filter?", "doc": "espresso-manual.pdf", "page": 4, "expect": "2 months"},
+    {"question": "Can the brew group go in the dishwasher?", "doc": "espresso-manual.pdf", "page": 4, "expect": "dishwasher"},
+    {"question": "How long does descaling take?", "doc": "espresso-manual.pdf", "page": 4, "expect": "25 minutes"},
+    {"question": "What does error E03 mean?", "doc": "espresso-manual.pdf", "page": 5, "expect": "grinder is blocked"},
+    {"question": "The display shows E09, what should I do?", "doc": "espresso-manual.pdf", "page": 5, "expect": "Descale"},
+    {"question": "My coffee tastes watery", "doc": "espresso-manual.pdf", "page": 5, "expect": "finer grind"},
+    {"question": "What is the pump pressure?", "doc": "espresso-manual.pdf", "page": 6, "expect": "15 bar"},
+    {"question": "How heavy is the machine?", "doc": "espresso-manual.pdf", "page": 6, "expect": "8.2 kg"},
+    {"question": "When does the machine turn itself off?", "doc": "espresso-manual.pdf", "page": 6, "expect": "30 minutes"},
+    {"question": "How long is the warranty?", "doc": "espresso-manual.pdf", "page": 7, "expect": "2 years"},
+    {"question": "Where do I find the serial number?", "doc": "espresso-manual.pdf", "page": 7, "expect": "drip tray"},
+
+    {"question": "Is there a company car policy?", "expect": null},
+    {"question": "What is the salary of a junior developer?", "expect": null},
+    {"question": "Does the machine have a built-in milk frother app?", "expect": null},
+    {"question": "What is the price of the Brava One?", "expect": null}
+  ]
+}
