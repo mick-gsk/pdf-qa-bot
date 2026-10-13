@@ -1,6 +1,6 @@
 from pdfqa.index import Index
 from pdfqa.ingest import Chunk, chunk_pdf
-from pdfqa.qa import NOT_FOUND, SYSTEM_PROMPT, answer
+from pdfqa.qa import NOT_FOUND, SYSTEM_PROMPT, answer, answer_stream
 
 
 class FakeLLM:
@@ -59,6 +59,35 @@ def test_extractive_lists_only_cited_sources(sample_pdf):
 def test_extractive_refuses_when_only_common_words_match(sample_pdf):
     # "company" appears in the handbook, "car" does not
     assert answer("Is there a company car policy?", Index(chunk_pdf(sample_pdf))).text == NOT_FOUND
+
+
+class StreamingLLM(FakeLLM):
+    def stream(self, system, prompt):
+        yield from ["Hotels: up to ", "120 euros ", "per night [1]."]
+
+
+def test_stream_yields_pieces_then_final_answer(sample_pdf):
+    events = list(answer_stream("hotel cost limit", Index(chunk_pdf(sample_pdf)), StreamingLLM("")))
+    assert [v for k, v in events if k == "token"] == ["Hotels: up to ", "120 euros ", "per night [1]."]
+    kind, final = events[-1]
+    assert kind == "done" and final.text == "Hotels: up to 120 euros per night [1]."
+    assert [s.n for s in final.sources] == [1]
+
+
+def test_stream_not_found_is_normalised(sample_pdf):
+    llm = StreamingLLM("")
+    llm.stream = lambda system, prompt: iter(["I couldn't find this in the ", "uploaded documents."])
+    *_, (kind, final) = answer_stream("vacation", Index(chunk_pdf(sample_pdf)), llm)
+    assert final.text == NOT_FOUND and final.sources == []
+
+
+def test_stream_without_llm_searches_once():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    calls = []
+    search = index.search
+    index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
+    events = list(answer_stream("How many vacation days?", index))
+    assert events[-1][0] == "done" and len(calls) == 1
 
 
 def test_short_sentence_can_be_the_answer():

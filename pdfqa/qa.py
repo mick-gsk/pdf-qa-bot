@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from .index import Index, tokenize
@@ -45,22 +46,53 @@ def build_prompt(question: str, sources: list[Source]) -> str:
     return f"Excerpts:\n\n{excerpts}\n\nQuestion: {question}"
 
 
-def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
-           hits: list[tuple[Chunk, float]] | None = None) -> Answer:
-    """Answer from the top k chunks; pass `hits` to reuse a search that already ran."""
+def retrieve(question: str, index: Index, k: int = 4,
+             hits: list[tuple[Chunk, float]] | None = None) -> list[Source]:
+    """The top k chunks as numbered sources; pass `hits` to reuse a search that already ran."""
     if hits is None:
         hits = index.search(question, k=k)
-    if not hits:
+    return [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
+            for n, (chunk, score) in enumerate(hits, start=1)]
+
+
+def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
+           hits: list[tuple[Chunk, float]] | None = None) -> Answer:
+    return _answer(question, retrieve(question, index, k, hits), index, llm)
+
+
+def _answer(question: str, sources: list[Source], index: Index, llm: LLM | None) -> Answer:
+    if not sources:
         return Answer(NOT_FOUND, [], "none")
-    sources = [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
-               for n, (chunk, score) in enumerate(hits, start=1)]
     if llm is None:
-        text = _extractive(question, sources, index)
-        return Answer(text, _cited_only(text, sources) if text != NOT_FOUND else [], "extractive")
-    text = llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)).strip()
-    if NOT_FOUND.rstrip(".") in text:
-        return Answer(NOT_FOUND, [], llm.name)
-    return Answer(text, _cited_only(text, sources), llm.name)
+        return _finish(_extractive(question, sources, index), sources, "extractive")
+    return _finish(llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)), sources, llm.name)
+
+
+def answer_stream(question: str, index: Index, llm: LLM | None = None,
+                  k: int = 4) -> Iterator[tuple[str, str | Answer]]:
+    """Like answer(), but yields ("token", text) pieces as the model writes and ends with ("done", Answer).
+
+    The final Answer is authoritative: if the model ends up saying it found nothing, the
+    client should replace the streamed text with it.
+    """
+    sources = retrieve(question, index, k)
+    if not sources or llm is None:
+        result = _answer(question, sources, index, llm)  # reuse the search above
+        yield "token", result.text
+        yield "done", result
+        return
+    parts = []
+    for piece in llm.stream(SYSTEM_PROMPT, build_prompt(question, sources)):
+        parts.append(piece)
+        yield "token", piece
+    yield "done", _finish("".join(parts), sources, llm.name)
+
+
+def _finish(text: str, sources: list[Source], mode: str) -> Answer:
+    text = text.strip()
+    if not text or NOT_FOUND.rstrip(".") in text:
+        return Answer(NOT_FOUND, [], mode)
+    return Answer(text, _cited_only(text, sources), mode)
 
 
 def _cited_only(text: str, sources: list[Source]) -> list[Source]:
@@ -77,7 +109,9 @@ def _extractive(question: str, sources: list[Source], index: Index, max_sentence
     ("company", "machine") with the question does not count as an answer, and a question
     whose key word appears nowhere in the documents is answered with NOT_FOUND.
     """
-    weights = {t: index.idf(t) for t in set(tokenize(question))}
+    # An unseen word counts like a rare one, not more: it is as likely a synonym ("limit" for
+    # "reimbursed up to") as a sign that the topic is missing.
+    weights = {t: index.idf(t, min_df=1) for t in set(tokenize(question))}
     total = sum(weights.values())
     if not total:
         return NOT_FOUND
