@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from .claims import Claim, extract, normalise_text
@@ -173,7 +173,7 @@ def _check(claim: Claim, sources: list[_Source], cited: set[int], known: set[str
                                and c.unit != claim.unit and _same(c.number, claim.number)), None)
             if other_unit:
                 return result("unit_mismatch", n, other_unit.text)
-        derived = _derive(claim, [c for _, s in in_scope for c in s.claims])
+        derived = _derive(claim, _occurrences(s for _, s in in_scope))
         if derived:
             return result("derived", None, derived)
     return result("unsupported")
@@ -205,6 +205,18 @@ def _same_date(source: str, claim: str) -> bool:
     return rest_s == rest_c and (ys == yc or yc == "*")
 
 
+def _occurrences(sources: Iterable[_Source]) -> list[Claim]:
+    """The values of the sources, each sentence once: overlapping chunks repeat a sentence."""
+    seen, found = set(), []
+    for source in sources:
+        for c in source.claims:
+            key = (source.evidence(c), c.text, c.value, c.part)
+            if key not in seen:
+                seen.add(key)
+                found.append(c)
+    return found
+
+
 def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     """Explain the claim as one arithmetic step over two values from the excerpts, if possible."""
     target = claim.value
@@ -213,8 +225,12 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     # compare at the precision the answer wrote, with a decimal point or comma
     written = re.search(r"\d[.,](\d+)\b", claim.text)
     decimals = len(written.group(1)) if written else 0
-    values = {(c.value, c.unit, c.text) for c in facts if c.kind == "amount" and c.value is not None}
-    for (a, ua, ta), (b, ub, tb) in itertools.permutations(values, 2):
+    # every occurrence counts: two line items of 6 euros add up to 12 euros
+    amounts = [(c.value, c.unit, c.text, c.start, c.part) for c in facts
+               if c.kind == "amount" and c.value is not None]
+    for (a, ua, ta, sa, pa), (b, ub, tb, sb, pb) in itertools.permutations(amounts, 2):
+        if (sa, pa, ta) == (sb, pb, tb) and a != b:
+            continue  # two readings of the same number ("1,234")
         same_unit = ua == ub
         candidates = []
         if same_unit and claim.unit in (None, ua):

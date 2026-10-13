@@ -122,3 +122,21 @@ def test_answer_may_not_add_a_unit_to_a_bare_source_number():
 def test_decimal_comma_keeps_its_precision_when_deriving():
     assert [c.status for c in verify("Together 1,4 euros [1].", ["1 euro and 0,1 euros."]).checks] == [
         "unsupported"]
+
+
+def test_sign_before_the_currency_is_kept():
+    assert [c.status for c in verify("The balance is -€120 [1].", ["The balance is €120."]).checks] == ["unsupported"]
+
+
+def test_composed_number_words_are_one_number():
+    assert [c.status for c in verify("You get one hundred days [1].", ["You get one day."]).checks] == ["unsupported"]
+
+
+def test_equal_line_items_can_be_added():
+    sources = ["Shipping for the cable: 6 euros. Shipping for the lamp: 6 euros."]
+    assert [c.status for c in verify("Shipping is 12 euros in total [1].", sources).checks] == ["derived"]
+
+
+def test_overlapping_chunks_do_not_count_a_value_twice():
+    sources = ["Shipping costs 6 euros.", "Shipping costs 6 euros. Returns are free."]
+    assert [c.status for c in verify("Shipping is 12 euros in total [1][2].", sources).checks] == ["unsupported"]
