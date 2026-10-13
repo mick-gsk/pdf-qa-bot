@@ -104,3 +104,7 @@ def test_number_words_up_to_twenty_and_the_tens():
 
 def test_lowercase_currency_code():
     assert keys("usd 120") == [("amount", "120 USD")]
+
+
+def test_leading_sign_belongs_to_the_first_end_of_a_range():
+    assert [c.key for c in extract("-5 to 3%")] == ["-5 %", "3 %"]

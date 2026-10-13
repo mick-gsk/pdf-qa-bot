@@ -173,3 +173,8 @@ def test_bare_number_needs_the_same_counted_thing_in_the_excerpt():
 def test_each_bare_number_is_bound_to_its_own_noun():
     checks = verify("There are 3 meetings and 3 blockers [1].", ["There are 3 meetings and 7 blockers."]).checks
     assert [c.status for c in checks] == ["supported", "unsupported"]
+
+
+def test_negative_totals_can_be_derived():
+    sources = ["Fee A: -€5. Fee B: -€7."]
+    assert [c.status for c in verify("The fees are -€12 in total [1].", sources).checks] == ["derived"]

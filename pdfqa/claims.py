@@ -269,7 +269,7 @@ def extract(text: str) -> list[Claim]:
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])
         for part, number in enumerate(numbers):
             for value in parse_number(number):
-                value *= magnitude
+                value *= magnitude if part == 0 else abs(magnitude)  # "-5 to 3%": only the first is negative
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, unit,
                            _amount_key(value * factor, unit), value, part))
     return sorted(claims, key=lambda c: (c.start, c.key))
