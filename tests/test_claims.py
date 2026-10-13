@@ -82,3 +82,25 @@ def test_magnitude_words_scale_the_amount(text):
 
 def test_billion_and_milliarden():
     assert keys("3 billion dollars") == keys("3 Mrd. Dollar") == [("amount", "3e+09 USD")]
+
+
+@pytest.mark.parametrize("text, key", [("-5%", "-5 %"), ("−5 %", "-5 %"), ("+5 %", "5 %"),
+                                       ("balance: -120 €", "-120 EUR"), ("€-120", "-120 EUR")])
+def test_signs_are_kept(text, key):
+    assert keys(text) == [("amount", key)]
+
+
+@pytest.mark.parametrize("text, key", [("9:30 AM", "09:30"), ("9:30 PM", "21:30"), ("2:30 pm", "14:30"),
+                                       ("5 p.m.", "17:00"), ("12 a.m.", "00:00"),
+                                       ("um 9:30 am Montag", "09:30")])  # German "am", not a.m.
+def test_twelve_hour_times(text, key):
+    assert keys(text) == [("time", key)]
+
+
+def test_number_words_up_to_twenty_and_the_tens():
+    assert keys("fourteen days, vierzehn Tage, seventy euros") == [
+        ("amount", "14 day"), ("amount", "14 day"), ("amount", "70 EUR")]
+
+
+def test_lowercase_currency_code():
+    assert keys("usd 120") == [("amount", "120 USD")]
