@@ -177,7 +177,7 @@ OpenAPI docs are served at `/docs`.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/documents` | upload one or more PDFs (multipart field `files`) |
-| `GET` | `/documents` | list indexed documents |
+| `GET` | `/documents` | list indexed documents, with pages and chunks per document |
 | `GET` | `/documents/{name}` | download a PDF |
 | `DELETE` | `/documents/{name}` | remove one document |
 | `DELETE` | `/documents` | remove all documents |
@@ -222,7 +222,7 @@ with `LLM_PROVIDER` and `EMBEDDINGS` set to compare setups on your own documents
 ## Development
 
 ```bash
-pytest --cov   # 152 tests
+pytest --cov   # 153 tests
 ruff check .
 mypy
 ```

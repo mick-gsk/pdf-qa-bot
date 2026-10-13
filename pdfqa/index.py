@@ -95,6 +95,15 @@ class Index:
     def documents(self) -> list[str]:
         return sorted({c.doc for c in self.chunks})
 
+    def stats(self) -> list[dict]:
+        """Per document: pages with text and number of chunks, sorted by name."""
+        pages: dict[str, set[int]] = {}
+        chunks: dict[str, int] = {}
+        for c in self.chunks:
+            pages.setdefault(c.doc, set()).add(c.page)
+            chunks[c.doc] = chunks.get(c.doc, 0) + 1
+        return [{"name": d, "pages": len(pages[d]), "chunks": chunks[d]} for d in sorted(chunks)]
+
     # --- ranking -------------------------------------------------------
 
     def bm25(self, query: str) -> list[tuple[int, float]]:

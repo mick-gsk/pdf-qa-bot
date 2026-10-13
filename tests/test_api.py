@@ -143,3 +143,9 @@ def test_unexpected_error_carries_request_id(tmp_path):
 def test_non_ascii_token_can_authenticate(tmp_path):
     c = TestClient(create_app(Settings(data_dir=tmp_path, api_token="pässwort")))
     assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 200
+
+
+def test_documents_list_pages_and_chunks(tmp_path, sample_pdf):
+    c = client(tmp_path)
+    c.post("/documents", files={"files": ("employee-handbook.pdf", sample_pdf.read_bytes(), "application/pdf")})
+    assert c.get("/documents").json()["files"] == [{"name": "employee-handbook.pdf", "pages": 3, "chunks": 3}]

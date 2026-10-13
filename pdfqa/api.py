@@ -94,7 +94,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/documents", dependencies=auth)
     def documents() -> dict:
-        return {"documents": store.documents(), "chunks": len(store.index)}
+        # "files" adds pages with text and chunks per document; "documents" stays a plain list
+        return {"documents": store.documents(), "chunks": len(store.index), "files": store.index.stats()}
 
     @app.post("/documents", status_code=201, dependencies=auth)
     async def upload(files: list[UploadFile] = File(...)) -> dict:
