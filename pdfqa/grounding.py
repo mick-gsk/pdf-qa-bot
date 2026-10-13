@@ -233,8 +233,10 @@ def _find(claim: Claim, source: _Source, context: set[str]) -> str | None:
             # A bare number ("settings 4 to 6") matches a value with or without a unit, but only if the
             # source sentence shares a word with the answer sentence; otherwise "5" would be
             # backed by "5 minutes" anywhere in the excerpt.
+            # A bare source value is likewise about the thing named after it.
             evidence = source.evidence(c)
-            if context & _words(evidence):
+            named = _named_after(c, source.text) if c.unit is None else set()
+            if context & (named or _words(evidence)):
                 return evidence
     return None
 
@@ -249,10 +251,7 @@ def _words(text: str) -> set[str]:
 
 def _named_after(claim: Claim, sentence: str) -> set[str]:
     """Words of the one or two words right after a bare number: what it counts."""
-    at = sentence.find(claim.text)
-    if at < 0:
-        return set()
-    m = re.match(r"\s*((?:[^\W\d_]+[\s-]*){1,2})", sentence[at + len(claim.text):])
+    m = re.match(r"\s*((?:[^\W\d_]+[\s-]*){1,2})", sentence[claim.end:])
     return _words(m.group(1)) if m else set()
 
 

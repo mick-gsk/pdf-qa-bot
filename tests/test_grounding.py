@@ -168,3 +168,8 @@ def test_bare_number_needs_the_same_counted_thing_in_the_excerpt():
     sources = ["There are 3 meetings this week."]
     assert [c.status for c in verify("There are 3 blockers [1].", sources).checks] == ["unsupported"]
     assert verify("There are 3 meetings [1].", sources).grounded
+
+
+def test_each_bare_number_is_bound_to_its_own_noun():
+    checks = verify("There are 3 meetings and 3 blockers [1].", ["There are 3 meetings and 7 blockers."]).checks
+    assert [c.status for c in checks] == ["supported", "unsupported"]
