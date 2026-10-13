@@ -31,3 +31,15 @@ def test_bad_config_is_a_usage_error(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         main(["ask", "x"])
     assert "LLM_PROVIDER" in capsys.readouterr().err
+
+
+def test_pdfs_indexed_on_the_command_line_can_be_downloaded(tmp_path, sample_pdf, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from pdfqa.api import create_app
+    from pdfqa.config import Settings
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert main(["index", str(sample_pdf)]) == 0
+    res = TestClient(create_app(Settings(data_dir=tmp_path))).get(f"/documents/{sample_pdf.name}")
+    assert res.status_code == 200 and res.content == sample_pdf.read_bytes()
