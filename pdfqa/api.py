@@ -93,15 +93,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def upload(files: list[UploadFile] = File(...)) -> dict:
         added = {}
         for file in files:
-            if not (file.filename or "").lower().endswith(".pdf"):
-                raise HTTPException(415, f"{file.filename}: only PDF files are supported.")
+            filename = file.filename or "document.pdf"
+            if not filename.lower().endswith(".pdf"):
+                raise HTTPException(415, f"{filename}: only PDF files are supported.")
             data = await file.read()
             if len(data) > max_bytes:
-                raise HTTPException(413, f"{file.filename} is larger than {settings.max_upload_mb} MB.")
+                raise HTTPException(413, f"{filename} is larger than {settings.max_upload_mb} MB.")
             if not data.startswith(b"%PDF-"):
-                raise HTTPException(415, f"{file.filename} is not a PDF file.")
+                raise HTTPException(415, f"{filename} is not a PDF file.")
             # parsing and embedding are blocking; keep them off the event loop
-            added[file.filename] = await run_in_threadpool(store.add_pdf, file.filename, data)
+            added[filename] = await run_in_threadpool(store.add_pdf, filename, data)
         return {"added": added, "documents": store.documents()}
 
     @app.get("/documents/{name}", dependencies=auth, response_class=FileResponse)

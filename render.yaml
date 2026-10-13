@@ -1,0 +1,18 @@
+# Render blueprint: https://render.com/docs/blueprint-spec
+# The free plan has no persistent disk, so uploads are lost on restart. For real use,
+# switch to a paid plan and uncomment the disk.
+services:
+  - type: web
+    name: pdf-qa-bot
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: API_TOKEN
+        generateValue: true
+    # disk:
+    #   name: data
+    #   mountPath: /data
+    #   sizeGB: 1

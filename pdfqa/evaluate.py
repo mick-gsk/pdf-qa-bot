@@ -72,9 +72,11 @@ def evaluate(index: Index, cases: list[Case], llm: LLM | None = None, k: int = 4
 
         report.answerable += 1
         pages = [(c.doc, c.page) for c, _ in index.search(case.question, k=k)]
-        if (case.doc, case.page) in pages:
-            report.hits += 1
-            report.reciprocal_ranks += 1 / (pages.index((case.doc, case.page)) + 1)
+        for rank, page in enumerate(pages, start=1):
+            if page == (case.doc, case.page):
+                report.hits += 1
+                report.reciprocal_ranks += 1 / rank
+                break
         if case.expect.lower() in result.text.lower():
             report.correct += 1
         else:
