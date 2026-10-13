@@ -251,10 +251,11 @@ def _same_date(source: str, claim: str) -> bool:
 
 _COUNT_UNITS = (None, "day", "week", "month", "year")
 # A value only counts as derived if the sentence says it is a calculation. Otherwise "5 years"
-# would pass as 2 years + 3 years when the excerpt only mentions those two warranties.
+# would pass as 2 years + 3 years when the excerpt only mentions those two warranties. Rate words
+# ("per", "each", "pro") are no such sign: "280 euros per night" is not 120 + 160 euros per night.
 _CALCULATION_RE = re.compile(
-    r"\b(?:more|less|fewer|difference|total|together|combined|sum|altogether|times|each|per|gives|"
-    r"makes|comes to|adds up|mehr|weniger|insgesamt|zusammen|gesamt|differenz|jeweils|pro|ergibt|macht)\b",
+    r"\b(?:more|less|fewer|difference|total|together|combined|sum|altogether|times|gives|"
+    r"makes|comes to|adds up|mehr|weniger|insgesamt|zusammen|gesamt|differenz|ergibt|macht)\b",
     re.IGNORECASE)
 
 

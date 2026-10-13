@@ -138,3 +138,9 @@ def test_answer_may_not_add_a_unit_to_a_bare_source_number():
 def test_decimal_comma_keeps_its_precision_when_deriving():
     assert [c.status for c in verify("Together 1,4 euros [1].", ["1 euro and 0,1 euros."]).checks] == [
         "unsupported"]
+
+
+def test_rate_word_is_no_sign_of_a_calculation():
+    sources = ["Hotel costs are reimbursed up to 120 euros per night, or up to 160 euros per night in Paris."]
+    assert [c.status for c in verify("Hotels cost 280 euros per night [1].", sources).checks] == ["unsupported"]
+    assert [c.status for c in verify("Together that is 280 euros [1].", sources).checks] == ["derived"]
