@@ -398,7 +398,7 @@ function annotate(text, checks, sources, turn) {
 }
 
 function verdict(data) {
-  if (!data.sources.length) return "";
+  if (!data.sources.length) return `<div class="verdict none">${ICON_INFO}<p>No excerpt answers this question, so the bot doesn't guess.</p></div>`;
   const n = data.checks.length;
   if (!n) return `<div class="verdict none">${ICON_INFO}<p>No amounts, dates or quotes in this answer to check.</p></div>`;
   const bad = data.checks.filter(c => !OK.includes(c.status)).length;
