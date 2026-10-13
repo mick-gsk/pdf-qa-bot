@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from .index import Index, tokenize
-from .ingest import is_heading, split_sentences
+from .ingest import Chunk, is_heading, split_sentences
 from .llm import LLM
 
 NOT_FOUND = "I couldn't find this in the uploaded documents."
@@ -46,13 +46,21 @@ def build_prompt(question: str, sources: list[Source]) -> str:
     return f"Excerpts:\n\n{excerpts}\n\nQuestion: {question}"
 
 
-def retrieve(question: str, index: Index, k: int = 4) -> list[Source]:
+def retrieve(question: str, index: Index, k: int = 4,
+             hits: list[tuple[Chunk, float]] | None = None) -> list[Source]:
+    """The top k chunks as numbered sources; pass `hits` to reuse a search that already ran."""
+    if hits is None:
+        hits = index.search(question, k=k)
     return [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
-            for n, (chunk, score) in enumerate(index.search(question, k=k), start=1)]
+            for n, (chunk, score) in enumerate(hits, start=1)]
 
 
-def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4) -> Answer:
-    sources = retrieve(question, index, k)
+def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
+           hits: list[tuple[Chunk, float]] | None = None) -> Answer:
+    return _answer(question, retrieve(question, index, k, hits), index, llm)
+
+
+def _answer(question: str, sources: list[Source], index: Index, llm: LLM | None) -> Answer:
     if not sources:
         return Answer(NOT_FOUND, [], "none")
     if llm is None:
@@ -69,7 +77,7 @@ def answer_stream(question: str, index: Index, llm: LLM | None = None,
     """
     sources = retrieve(question, index, k)
     if not sources or llm is None:
-        result = answer(question, index, llm, k)
+        result = _answer(question, sources, index, llm)  # reuse the search above
         yield "token", result.text
         yield "done", result
         return
