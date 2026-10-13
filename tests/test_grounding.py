@@ -91,3 +91,31 @@ def test_derived_needs_a_calculation_word():
 def test_numbered_list_items_are_not_values():
     answer = "1. Hotels: up to 120 euros per night [1].\n2. Meals: 28 euros per day [1]."
     assert statuses(answer) == [("120 euros", "supported"), ("28 euros", "supported")]
+
+
+def test_each_value_is_checked_against_its_own_citation():
+    # 28 vacation days is in [2], 120 euros in [1]; pooling both citations would hide the swap
+    assert statuses("Hotels cost up to 120 euros [2] and you get 28 vacation days [1].") == [
+        ("120 euros", "wrong_citation"), ("28 vacation days", "wrong_citation")]
+    assert statuses("Hotels cost up to 120 euros [1] and you get 28 vacation days [2].") == [
+        ("120 euros", "supported"), ("28 vacation days", "supported")]
+
+
+def test_value_after_its_citation_uses_the_one_before():
+    assert statuses("According to [2], you get 28 vacation days.") == [("28 vacation days", "supported")]
+
+
+def test_amounts_of_the_same_unit_are_not_multiplied():
+    # 160 euros x 28 euros is not a meaningful amount of euros
+    assert statuses("Paris costs 4480 euros [1].") == [("4480 euros", "unsupported")]
+    assert statuses("Paris costs 4480 [1].") == [("4480", "unsupported")]
+    # a count times an amount is
+    assert verify("Two nights cost 240 euros in total.", ["Hotels: up to 120 euros per night, 2 nights."]).grounded
+
+
+def test_answer_may_not_add_a_year_the_source_does_not_give():
+    sources = ["The office closes on 24 December."]
+    assert [c.status for c in verify("It closes on 24 December 2025 [1].", sources).checks] == ["unsupported"]
+    assert verify("It closes on 24 December [1].", sources).grounded
+    # the other way round is fine: the answer leaves out a year the source gives
+    assert verify("The rules apply from 1 January [2].", SOURCES).grounded

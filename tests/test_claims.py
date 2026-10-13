@@ -72,3 +72,13 @@ def test_citations_and_list_numbers_are_ignored():
 def test_quotes_need_three_words():
     assert keys('He said "fine" and "cannot be reimbursed later".') == [
         ("quote", "cannot be reimbursed later")]
+
+
+@pytest.mark.parametrize("text", ["120 million euros", "€120 million", "120 Mio. €", "120 Millionen Euro",
+                                  "120.000.000 €"])
+def test_magnitude_words_scale_the_amount(text):
+    assert keys(text) == [("amount", "1.2e+08 EUR")]
+
+
+def test_billion_and_milliarden():
+    assert keys("3 billion dollars") == keys("3 Mrd. Dollar") == [("amount", "3e+09 USD")]

@@ -36,7 +36,8 @@ def require_token(token: str | None):
     """Dependency that checks `Authorization: Bearer <token>` when API_TOKEN is set."""
 
     def check(authorization: str = Header(default="")) -> None:
-        if token and not secrets.compare_digest(authorization, f"Bearer {token}"):
+        # compare bytes: compare_digest rejects str with non-ASCII characters
+        if token and not secrets.compare_digest(authorization.encode(), f"Bearer {token}".encode()):
             raise HTTPException(401, "Missing or wrong API token.", headers={"WWW-Authenticate": "Bearer"})
 
     return check
@@ -73,7 +74,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "-")
         log.exception("unhandled error id=%s", request_id)
-        return JSONResponse({"detail": "Internal error.", "request_id": request_id}, status_code=500)
+        # this handler runs outside request_log, so the header has to be set here
+        return JSONResponse({"detail": "Internal error.", "request_id": request_id}, status_code=500,
+                            headers={"X-Request-ID": request_id})
 
     @app.get("/", include_in_schema=False)
     def page() -> FileResponse:
@@ -107,8 +110,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/documents/{name}", dependencies=auth, response_class=FileResponse)
     def download(name: str) -> FileResponse:
-        return FileResponse(store.path(name), media_type="application/pdf",
-                            headers={"Content-Disposition": f'inline; filename="{store.path(name).name}"'})
+        path = store.path(name)
+        # Starlette encodes non-Latin names per RFC 5987 (filename*=utf-8''...)
+        return FileResponse(path, media_type="application/pdf", filename=path.name,
+                            content_disposition_type="inline")
 
     @app.delete("/documents/{name}", dependencies=auth)
     def remove(name: str) -> dict:

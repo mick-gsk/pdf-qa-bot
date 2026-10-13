@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from .grounding import Check, repair_instructions, strip_unsupported, verify
 from .index import Index, tokenize
-from .ingest import is_heading, split_sentences
+from .ingest import Chunk, is_heading, split_sentences
 from .llm import LLM
 
 NOT_FOUND = "I couldn't find this in the uploaded documents."
@@ -49,19 +49,27 @@ def build_prompt(question: str, sources: list[Source]) -> str:
     return f"Excerpts:\n\n{excerpts}\n\nQuestion: {question}"
 
 
-def retrieve(question: str, index: Index, k: int = 4) -> list[Source]:
+def retrieve(question: str, index: Index, k: int = 4,
+             hits: list[tuple[Chunk, float]] | None = None) -> list[Source]:
+    """The top k chunks as numbered sources; pass `hits` to reuse a search that already ran."""
+    if hits is None:
+        hits = index.search(question, k=k)
     return [Source(n, chunk.citation, chunk.text, round(score, 4), chunk.doc, chunk.page)
-            for n, (chunk, score) in enumerate(index.search(question, k=k), start=1)]
+            for n, (chunk, score) in enumerate(hits, start=1)]
 
 
 def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
-           grounding: str = "repair") -> Answer:
+           grounding: str = "repair", hits: list[tuple[Chunk, float]] | None = None) -> Answer:
     """Retrieve, ask the model, then check its numbers, dates and quotes against the excerpts.
 
     grounding: "repair" asks the model once to fix unsupported values and drops sentences
-    that are still wrong, "flag" only reports them, "off" skips the check.
+    that are still wrong, "flag" only reports them, "off" skips the check. Pass `hits` to
+    reuse a search that already ran.
     """
-    sources = retrieve(question, index, k)
+    return _answer(question, retrieve(question, index, k, hits), index, llm, grounding)
+
+
+def _answer(question: str, sources: list[Source], index: Index, llm: LLM | None, grounding: str) -> Answer:
     if not sources:
         return Answer(NOT_FOUND, [], "none")
     if llm is None:
@@ -82,7 +90,7 @@ def answer_stream(question: str, index: Index, llm: LLM | None = None, k: int = 
     """
     sources = retrieve(question, index, k)
     if not sources or llm is None:
-        result = answer(question, index, llm, k, grounding)
+        result = _answer(question, sources, index, llm, grounding)  # reuse the search above
         yield "token", result.text
         yield "done", result
         return

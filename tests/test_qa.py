@@ -1,5 +1,5 @@
 from pdfqa.index import Index
-from pdfqa.ingest import chunk_pdf
+from pdfqa.ingest import Chunk, chunk_pdf
 from pdfqa.qa import NOT_FOUND, SYSTEM_PROMPT, answer, answer_stream
 
 
@@ -121,3 +121,12 @@ def test_grounded_answer_needs_one_call(sample_pdf):
     llm = ScriptedLLM("Hotels are reimbursed up to 120 euros per night [1].")
     result = answer("hotel cost limit", Index(chunk_pdf(sample_pdf)), llm)
     assert len(llm.calls) == 1 and not result.repaired
+
+
+def test_stream_without_llm_searches_once():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    calls = []
+    search = index.search
+    index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
+    events = list(answer_stream("How many vacation days?", index))
+    assert events[-1][0] == "done" and len(calls) == 1
