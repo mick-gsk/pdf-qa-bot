@@ -31,12 +31,14 @@ _STOPWORDS = set(
 )
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _stem = snowballstemmer.stemmer("english").stemWord
+# compared after stemming, so "getting" is dropped like "get"
+_STOP_STEMS = {_stem(w) for w in _STOPWORDS}
 
 
 def tokenize(text: str) -> list[str]:
     """Lower-case words without stopwords, stemmed so that "descaling" matches "descale"."""
-    return [_stem(t) for t in _TOKEN.findall(text.lower())
-            if t not in _STOPWORDS and (len(t) > 1 or t.isdigit())]
+    stems = (_stem(t) for t in _TOKEN.findall(text.lower()) if len(t) > 1 or t.isdigit())
+    return [s for s in stems if s not in _STOP_STEMS]
 
 
 class Index:
