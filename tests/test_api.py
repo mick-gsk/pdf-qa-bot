@@ -102,3 +102,19 @@ def test_responses_carry_request_id(tmp_path):
 def test_non_ascii_token_header_is_rejected_not_an_error(tmp_path):
     c = TestClient(create_app(Settings(data_dir=tmp_path, api_token="s3cret")))
     assert c.get("/documents", headers={"Authorization": "Bearer pässwort".encode()}).status_code == 401
+
+
+def test_download_of_non_latin_filename(tmp_path, sample_pdf):
+    c = client(tmp_path)
+    c.post("/documents", files={"files": ("合同.pdf", sample_pdf.read_bytes(), "application/pdf")})
+    res = c.get("/documents/合同.pdf")
+    assert res.status_code == 200
+    assert res.headers["content-disposition"].startswith("inline;")
+
+
+def test_unexpected_error_carries_request_id(tmp_path):
+    c = TestClient(create_app(Settings(data_dir=tmp_path)), raise_server_exceptions=False)
+    c.app.state.store.documents = mock.Mock(side_effect=RuntimeError("boom"))
+    res = c.get("/documents", headers={"X-Request-ID": "abc"})
+    assert res.status_code == 500
+    assert res.json()["request_id"] == "abc" and res.headers["X-Request-ID"] == "abc"
