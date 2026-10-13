@@ -72,6 +72,43 @@ _WORDS = {
     "sechzig": 60, "siebzig": 70, "achtzig": 80, "neunzig": 90, "hundert": 100,
 }
 _WORD_RE = "|".join(sorted(map(re.escape, _WORDS), key=len, reverse=True))
+# Composed number words are read as one number: "one hundred days" is 100, not 1 day with
+# "hundred" as a descriptive word, and "twenty-one" is 21.
+_EN_UNIT = "one|two|three|four|five|six|seven|eight|nine"
+_EN_TENS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
+_EN_UNDER_100 = (rf"(?:{_EN_TENS})(?:[-\s](?:{_EN_UNIT}))?|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
+                 rf"seventeen|eighteen|nineteen|{_EN_UNIT}")
+_DE_UNIT = "ein|zwei|drei|vier|fünf|sechs|sieben|acht|neun"
+_DE_TENS = "zwanzig|dreißig|vierzig|fünfzig|sechzig|siebzig|achtzig|neunzig"
+_DE_UNDER_20 = "zehn|elf|zwölf|dreizehn|vierzehn|fünfzehn|sechzehn|siebzehn|achtzehn|neunzehn"
+_COMPOUND_RE = (rf"(?:{_EN_UNIT}|a)\s+hundred(?:\s+(?:and\s+)?(?:{_EN_UNDER_100}))?|(?:{_EN_TENS})[-\s](?:{_EN_UNIT})"
+                rf"|(?:{_DE_UNIT})?hundert(?:und)?(?:(?:{_DE_UNIT})und(?:{_DE_TENS})|{_DE_TENS}|{_DE_UNDER_20}|eins"
+                rf"|{_DE_UNIT})|(?:{_DE_UNIT})hundert|(?:{_DE_UNIT})und(?:{_DE_TENS})")
+_DE_DIGITS = {w: _WORDS[w] for w in f"{_DE_UNIT}|{_DE_TENS}|{_DE_UNDER_20}".split("|")} | {"eins": 1}
+
+
+def _compound_value(text: str) -> float | None:
+    """Value of a composed number word ("one hundred and five", "einundzwanzig"), else None."""
+    if not re.fullmatch(_COMPOUND_RE, text):
+        return None
+    total: float = 0
+    if " " in text or "-" in text:  # English: words are added, "hundred" multiplies
+        for word in re.split(r"[-\s]+", text):
+            if word == "hundred":
+                total = (total or 1) * 100
+            elif word not in ("a", "and"):
+                total += _WORDS[word]
+        return total
+    head, sep, rest = text.partition("hundert")
+    if sep:
+        total = (_DE_DIGITS[head] if head else 1) * 100
+        rest = rest.removeprefix("und")
+    else:
+        rest = head
+    if rest:
+        unit, _, tens = rest.partition("und")
+        total += _DE_DIGITS[unit] + (_DE_DIGITS[tens] if tens else 0)
+    return total
 
 _MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7,
@@ -113,10 +150,11 @@ _DATE_PATTERNS = [
 _TIME_RE = re.compile(r"\b(?P<h>[01]?\d|2[0-3])(?::(?P<min>[0-5]\d)(?:\s*uhr\b)?|\.(?P<min2>[0-5]\d)\s*uhr\b)"
                       rf"(?:\s*(?P<ampm>{_AMPM}))?|\b(?P<h12>1[0-2]|0?[1-9])\s*(?P<ampm12>{_AMPM})",
                       re.IGNORECASE)
-_PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?{_SIGN}(?P<num>{_NUM}){_MAG}",
+_PREFIX_CURRENCY_RE = re.compile(rf"(?:(?<!\w)(?P<psign>[-+\u2212])(?=[€$£]|(?:EUR|USD|GBP|CHF)\b))?"
+                                 rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?{_SIGN}(?P<num>{_NUM}){_MAG}",
                                  re.IGNORECASE)
 _AMOUNT_RE = re.compile(
-    rf"(?<![\w.,]){_SIGN}(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
+    rf"(?<![\w.,]){_SIGN}(?P<num>{_NUM}|{_COMPOUND_RE}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
     rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|(?:\s+[a-zäöüß-]{{3,15}}){{1,2}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
     re.IGNORECASE,
 )
@@ -148,6 +186,9 @@ def parse_number(text: str) -> list[float]:
     text = text.strip().lower()
     if text in _WORDS:
         return [float(_WORDS[text])]
+    compound = _compound_value(text)
+    if compound is not None:
+        return [compound]
     text = text.replace(" ", "").replace(" ", "")
     if "," in text and "." in text:  # the later separator is the decimal one
         decimal = "," if text.rfind(",") > text.rfind(".") else "."
@@ -218,7 +259,7 @@ def extract(text: str) -> list[Claim]:
         if not free(m.start(), m.end()):
             continue
         raw_unit = (m.group("unit") or m.group("wunit") or "").lower()
-        is_word = m.group("num").lower() in _WORDS
+        is_word = not m.group("num")[0].isdigit()
         if is_word and not raw_unit:
             continue  # "one of the rules" is not a claim; "three days" is
         if is_word and m.group("unit") and masked[m.end("num")] not in " \u00a0-":
@@ -236,7 +277,8 @@ def extract(text: str) -> list[Claim]:
 
 def _magnitude(m: re.Match[str]) -> float:
     """Sign and magnitude word of an amount: "-5 %" is -5, "120 Mio." is 120,000,000."""
-    sign = -1.0 if m.group("sign") in ("-", "\u2212") else 1.0
+    signs = (m.group("sign"), m.groupdict().get("psign"))
+    sign = -1.0 if any(s in ("-", "\u2212") for s in signs) else 1.0
     return sign * (_MAGNITUDES[m.group("mag").lower()] if m.group("mag") else 1.0)
 
 

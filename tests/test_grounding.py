@@ -144,3 +144,21 @@ def test_rate_word_is_no_sign_of_a_calculation():
     sources = ["Hotel costs are reimbursed up to 120 euros per night, or up to 160 euros per night in Paris."]
     assert [c.status for c in verify("Hotels cost 280 euros per night [1].", sources).checks] == ["unsupported"]
     assert [c.status for c in verify("Together that is 280 euros [1].", sources).checks] == ["derived"]
+
+
+def test_sign_before_the_currency_is_kept():
+    assert [c.status for c in verify("The balance is -€120 [1].", ["The balance is €120."]).checks] == ["unsupported"]
+
+
+def test_composed_number_words_are_one_number():
+    assert [c.status for c in verify("You get one hundred days [1].", ["You get one day."]).checks] == ["unsupported"]
+
+
+def test_equal_line_items_can_be_added():
+    sources = ["Shipping for the cable: 6 euros. Shipping for the lamp: 6 euros."]
+    assert [c.status for c in verify("Shipping is 12 euros in total [1].", sources).checks] == ["derived"]
+
+
+def test_overlapping_chunks_do_not_count_a_value_twice():
+    sources = ["Shipping costs 6 euros.", "Shipping costs 6 euros. Returns are free."]
+    assert [c.status for c in verify("Shipping is 12 euros in total [1][2].", sources).checks] == ["unsupported"]

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 
 from .claims import _MONTH_RE, Claim, extract, normalise_text
@@ -207,7 +207,7 @@ def _check(claim: Claim, sources: list[_Source], cited: set[int], question: list
                                and c.unit != claim.unit and _same(c.number, claim.number)), None)
             if other_unit:
                 return result("unit_mismatch", n, other_unit.text)
-        derived = _derive(claim, [c for _, s in in_scope for c in s.claims] + question)
+        derived = _derive(claim, _occurrences(s for _, s in in_scope) + question)
         if derived and _CALCULATION_RE.search(sentence):
             return result("derived", None, derived)
     return result("unsupported")
@@ -239,6 +239,7 @@ def _words(text: str) -> set[str]:
     return {w[:6] for w in re.findall(r"[^\W\d_]{4,}", text.lower())}
 
 
+
 def _same(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
 
@@ -259,6 +260,18 @@ _CALCULATION_RE = re.compile(
     re.IGNORECASE)
 
 
+def _occurrences(sources: Iterable[_Source]) -> list[Claim]:
+    """The values of the sources, each sentence once: overlapping chunks repeat a sentence."""
+    seen, found = set(), []
+    for source in sources:
+        for c in source.claims:
+            key = (source.evidence(c), c.text, c.value, c.part)
+            if key not in seen:
+                seen.add(key)
+                found.append(c)
+    return found
+
+
 def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     """Explain the claim as one arithmetic step over two values from the excerpts, if possible.
 
@@ -274,8 +287,12 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     scale = target / claim.number
     written = re.search(r"\d[.,](\d+)\b", claim.text)
     decimals = len(written.group(1)) if written else 0
-    values = {(c.value, c.unit, c.text) for c in facts if c.kind == "amount" and c.value is not None}
-    for (a, ua, ta), (b, ub, tb) in itertools.permutations(values, 2):
+    # every occurrence counts: two line items of 6 euros add up to 12 euros
+    amounts = [(c.value, c.unit, c.text, c.start, c.part) for c in facts
+               if c.kind == "amount" and c.value is not None]
+    for (a, ua, ta, sa, pa), (b, ub, tb, sb, pb) in itertools.permutations(amounts, 2):
+        if (sa, pa, ta) == (sb, pb, tb) and a != b:
+            continue  # two readings of the same number ("1,234")
         candidates = []
         if ua == ub == unit:
             candidates += [(a + b, f"{ta} + {tb}"), (a - b, f"{ta} − {tb}")]
