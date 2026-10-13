@@ -243,7 +243,7 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
         if b and quotient != _INVALID and claim.unit in (None, quotient):
             candidates.append((a / b, f"{ta} / {tb}"))
         for value, how in candidates:
-            if round(value, decimals) == round(target, decimals) and value > 0:
+            if round(value, decimals) == round(target, decimals):
                 return how
     return None
 

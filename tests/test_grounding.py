@@ -140,3 +140,8 @@ def test_equal_line_items_can_be_added():
 def test_overlapping_chunks_do_not_count_a_value_twice():
     sources = ["Shipping costs 6 euros.", "Shipping costs 6 euros. Returns are free."]
     assert [c.status for c in verify("Shipping is 12 euros in total [1][2].", sources).checks] == ["unsupported"]
+
+
+def test_negative_totals_can_be_derived():
+    sources = ["Fee A: -€5. Fee B: -€7."]
+    assert [c.status for c in verify("The fees are -€12 in total [1].", sources).checks] == ["derived"]
