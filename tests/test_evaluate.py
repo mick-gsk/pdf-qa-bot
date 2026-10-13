@@ -14,7 +14,7 @@ def test_counts_hits_answers_and_refusals():
     ])
     report = evaluate(index, [
         Case("How many vacation days?", "28 vacation days", "a.pdf", 1),
-        Case("What is the hotel limit?", "120 euros", "a.pdf", 1),  # wrong page on purpose
+        Case("How much are hotel costs reimbursed?", "120 euros", "a.pdf", 1),  # wrong page on purpose
         Case("Who is the CEO?", None),
     ])
     summary = report.summary()

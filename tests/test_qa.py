@@ -54,3 +54,8 @@ def test_extractive_skips_weak_matches(sample_pdf):
 def test_extractive_lists_only_cited_sources(sample_pdf):
     result = answer("vacation days full-time", Index(chunk_pdf(sample_pdf)))
     assert [s.citation for s in result.sources] == ["employee-handbook.pdf, p. 1"]
+
+
+def test_extractive_refuses_when_only_common_words_match(sample_pdf):
+    # "company" appears in the handbook, "car" does not
+    assert answer("Is there a company car policy?", Index(chunk_pdf(sample_pdf))).text == NOT_FOUND

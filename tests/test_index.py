@@ -9,7 +9,13 @@ CHUNKS = [
 
 
 def test_tokenize_drops_stopwords_and_case():
-    assert tokenize("How many Vacation days do I get?") == ["vacation", "days"]
+    assert tokenize("How many Vacation days do I get?") == tokenize("vacation day")
+    assert len(tokenize("How many Vacation days do I get?")) == 2
+
+
+def test_tokenize_stems_word_forms():
+    assert tokenize("descaling") == tokenize("Descale")
+    assert tokenize("recommended settings") == tokenize("we recommend setting")
 
 
 def test_bm25_finds_relevant_chunk():

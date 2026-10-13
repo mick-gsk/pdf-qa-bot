@@ -50,7 +50,7 @@ def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4) -> A
     sources = [Source(n, chunk.citation, chunk.text, round(score, 4))
                for n, (chunk, score) in enumerate(hits, start=1)]
     if llm is None:
-        text = _extractive(question, sources)
+        text = _extractive(question, sources, index)
         return Answer(text, _cited_only(text, sources) if text != NOT_FOUND else [], "extractive")
     text = llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)).strip()
     if NOT_FOUND.rstrip(".") in text:
@@ -64,21 +64,33 @@ def _cited_only(text: str, sources: list[Source]) -> list[Source]:
     return [s for s in sources if s.n in cited] or sources
 
 
-def _extractive(question: str, sources: list[Source], max_sentences: int = 3) -> str:
-    """No-LLM fallback: return the sentences that overlap most with the question."""
-    terms = set(tokenize(question))
-    scored = []
+def _extractive(question: str, sources: list[Source], index: Index, max_sentences: int = 3,
+                min_coverage: float = 0.5) -> str:
+    """No-LLM fallback: return the sentences that cover most of the question.
+
+    Question words are weighted by IDF, so a sentence that only shares a common word
+    ("company", "machine") with the question does not count as an answer, and a question
+    whose key word appears nowhere in the documents is answered with NOT_FOUND.
+    """
+    weights = {t: index.idf(t) for t in set(tokenize(question))}
+    total = sum(weights.values())
+    if not total:
+        return NOT_FOUND
+    scored, seen = [], set()
     for source in sources:
         for position, sentence in enumerate(split_sentences(source.text)):
-            if is_heading(sentence):
+            if is_heading(sentence) or len(sentence.split()) < 3 or sentence in seen:
                 continue
-            overlap = len(terms & set(tokenize(sentence)))
-            if overlap:
-                scored.append((overlap, -source.n, -position, sentence, source.n))
+            seen.add(sentence)  # chunks overlap, so the same sentence can appear twice
+            coverage = sum(w for t, w in weights.items() if t in set(tokenize(sentence))) / total
+            if coverage:
+                scored.append((coverage, -source.n, -position, sentence, source.n))
     if not scored:
         return NOT_FOUND
     scored.sort(reverse=True)
     top = scored[0][0]
+    if top < min_coverage:
+        return NOT_FOUND
     # drop sentences that match much less of the question than the best one
     best = [s for s in scored if s[0] * 2 >= top][:max_sentences]
     return " ".join(f"{sentence} [{n}]" for *_, sentence, n in best)

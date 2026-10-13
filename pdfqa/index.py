@@ -16,6 +16,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from pathlib import Path
 
+import snowballstemmer
+
 from .ingest import Chunk
 
 EmbedFn = Callable[[Sequence[str]], list[list[float]]]
@@ -23,14 +25,17 @@ EmbedFn = Callable[[Sequence[str]], list[list[float]]]
 _STOPWORDS = set(
     """a an and are as at be by for from has have how i in is it of on or that the this to was what when where
     which who why will with you your can do does did my me we our much many there about get
+    should would could often long take takes need mean means tell any
     der die das und ist ein eine einen zu mit von im den des für auf nicht wie
-    was wer wann wo bei sich es kann ich mein wir viel viele gibt""".split()
+    was wer wann wo bei sich es kann ich mein wir viel viele gibt lange soll muss""".split()
 )
 _TOKEN = re.compile(r"\w+", re.UNICODE)
+_stem = snowballstemmer.stemmer("english").stemWord
 
 
 def tokenize(text: str) -> list[str]:
-    return [t for t in _TOKEN.findall(text.lower())
+    """Lower-case words without stopwords, stemmed so that "descaling" matches "descale"."""
+    return [_stem(t) for t in _TOKEN.findall(text.lower())
             if t not in _STOPWORDS and (len(t) > 1 or t.isdigit())]
 
 
@@ -60,6 +65,11 @@ class Index:
         if self.embed and chunks:
             self._vectors.extend(self.embed([c.text for c in chunks]))
 
+    def idf(self, term: str) -> float:
+        """BM25 inverse document frequency; terms that appear nowhere get the highest weight."""
+        n, df = len(self.chunks), self._df[term]
+        return math.log(1 + (n - df + 0.5) / (df + 0.5))
+
     def documents(self) -> list[str]:
         return sorted({c.doc for c in self.chunks})
 
@@ -78,7 +88,7 @@ class Index:
                 tf = tokens.get(term, 0)
                 if not tf:
                     continue
-                idf = math.log(1 + (n - self._df[term] + 0.5) / (self._df[term] + 0.5))
+                idf = self.idf(term)
                 norm = tf + self.k1 * (1 - self.b + self.b * self._lengths[i] / avg_len)
                 score += idf * tf * (self.k1 + 1) / norm
             if score > 0:
