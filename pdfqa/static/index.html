@@ -34,6 +34,11 @@
   .src b { color:var(--text); }
   .src a { color:var(--accent); cursor:pointer; text-decoration:none; }
   .src a:hover { text-decoration:underline; }
+  mark { background:none; color:inherit; border-bottom:2px solid; padding:0 1px; cursor:help; }
+  mark.supported, mark.derived { border-color:#2f9e5b; }
+  mark.derived { border-bottom-style:dashed; }
+  mark.unsupported, mark.unit_mismatch, mark.wrong_citation { border-color:#d64545; background:rgba(214,69,69,.1); }
+  .check { font-size:13px; color:var(--muted); margin-top:4px; }
   .status { font-size:13px; color:var(--muted); margin-top:8px; min-height:1.2em; }
   .row { display:flex; justify-content:space-between; align-items:center; }
 </style>
@@ -121,6 +126,33 @@ $("log").onclick = async (e) => {
 $("reset").onclick = async () => { await api("/documents", { method: "DELETE" }); $("log").innerHTML = ""; refresh(); };
 
 const cite = (text) => esc(text).replace(/\[(\d+)\]/g, "<sup>[$1]</sup>");
+
+// Underline each checked value: green if an excerpt backs it, red if not. The tooltip says where.
+const LABELS = {
+  supported: (c) => c.source ? `Found in [${c.source}]: ${c.evidence}` : `Found: ${c.evidence}`,
+  derived: (c) => `Calculated from the excerpts: ${c.evidence}`,
+  unsupported: () => "Not found in the cited excerpts",
+  unit_mismatch: (c) => `The excerpts give this number with another unit: ${c.evidence}`,
+  wrong_citation: (c) => `This is in excerpt [${c.source}], not in the one cited`,
+};
+function annotate(text, checks) {
+  let html = "", at = 0;
+  for (const c of [...checks].sort((a, b) => a.start - b.start)) {
+    if (c.start < at) continue;
+    html += cite(text.slice(at, c.start));
+    html += `<mark class="${c.status}" title="${esc(LABELS[c.status](c))}">${esc(text.slice(c.start, c.end))}</mark>`;
+    at = c.end;
+  }
+  return html + cite(text.slice(at));
+}
+function checkLine(data) {
+  if (!data.checks.length) return "";
+  const bad = data.checks.filter(c => !["supported", "derived"].includes(c.status)).length;
+  const n = data.checks.length;
+  let line = bad ? `${bad} of ${n} values not found in the sources` : `${n} value${n > 1 ? "s" : ""} checked against the sources`;
+  if (data.repaired) line += " · corrected after the first draft";
+  return `<div class="check">${line}</div>`;
+}
 const sourceHtml = (s) => `<div class="src"><a data-doc="${esc(s.doc)}" href="/documents/${encodeURIComponent(s.doc)}#page=${s.page}" target="_blank"><b>[${s.n}] ${esc(s.citation)}</b></a><br>${esc(s.text.slice(0, 260))}${s.text.length > 260 ? "…" : ""}</div>`;
 
 // Reads the server-sent events from /ask/stream: "token" pieces, then "done" with the final answer.
@@ -157,7 +189,7 @@ $("ask").onsubmit = async (e) => {
       if (kind === "token") show(cite(text += data));
       if (kind === "error") show(esc(data));
       if (kind === "done") {
-        show(cite(data.answer));
+        show(annotate(data.answer, data.checks) + checkLine(data));
         msg.querySelector(".sources").innerHTML = data.sources.map(sourceHtml).join("");
       }
     }

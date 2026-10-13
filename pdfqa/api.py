@@ -125,7 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not len(store.index):
             raise HTTPException(400, "Upload at least one PDF first.")
         try:
-            result = answer(q.question, store.index, llm, k=q.k or settings.top_k)
+            result = answer(q.question, store.index, llm, k=q.k or settings.top_k, grounding=settings.grounding)
         except Exception as exc:
             log.warning("LLM request failed: %s", exc)
             raise HTTPException(502, "The language model did not respond. Try again in a moment.") from exc
@@ -139,7 +139,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         def events():
             try:
-                for kind, value in answer_stream(q.question, store.index, llm, k=q.k or settings.top_k):
+                for kind, value in answer_stream(q.question, store.index, llm, k=q.k or settings.top_k,
+                                                    grounding=settings.grounding):
                     data = as_json(value) if isinstance(value, Answer) else value
                     yield f"event: {kind}\ndata: {json.dumps(data)}\n\n"
             except Exception as exc:
@@ -154,8 +155,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def as_json(result: Answer) -> dict:
-    return {"answer": result.text, "found": result.found, "mode": result.mode,
-            "sources": [asdict(s) for s in result.sources]}
+    return {"answer": result.text, "found": result.found, "mode": result.mode, "repaired": result.repaired,
+            "sources": [asdict(s) for s in result.sources], "checks": [asdict(c) for c in result.checks]}
 
 
 app = create_app()
