@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
+import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -33,8 +35,14 @@ class Store:
         self.index_path = self.dir / "index.json"
         self.embed = get_embedder()
         self.index = Index.load(self.index_path, self.embed) if self.index_path.exists() else Index(embed=self.embed)
+        # FastAPI runs sync endpoints in a thread pool; uploads and resets must not interleave.
+        self.lock = threading.Lock()
 
     def add_pdf(self, filename: str, data: bytes) -> int:
+        with self.lock:
+            return self._add_pdf(filename, data)
+
+    def _add_pdf(self, filename: str, data: bytes) -> int:
         safe = re.sub(r"[^\w.\- ]", "_", Path(filename).name) or "document.pdf"
         path = self.docs / safe
         if safe in self.index.documents():
@@ -53,6 +61,10 @@ class Store:
         return len(chunks)
 
     def reset(self) -> None:
+        with self.lock:
+            self._reset()
+
+    def _reset(self) -> None:
         for pdf in self.docs.glob("*"):
             pdf.unlink()
         self.index_path.unlink(missing_ok=True)
@@ -64,11 +76,23 @@ class Question(BaseModel):
     k: int = Field(default=4, ge=1, le=10)
 
 
-def create_app(data_dir: str | Path | None = None) -> FastAPI:
+def require_token(token: str | None):
+    """Dependency that checks `Authorization: Bearer <token>` when API_TOKEN is set."""
+
+    def check(authorization: str = Header(default="")) -> None:
+        if token and not secrets.compare_digest(authorization, f"Bearer {token}"):
+            raise HTTPException(401, "Missing or wrong API token.", headers={"WWW-Authenticate": "Bearer"})
+
+    return check
+
+
+def create_app(data_dir: str | Path | None = None, api_token: str | None = None) -> FastAPI:
     app = FastAPI(title="PDF Q&A Bot", version="1.0.0")
     store = Store(data_dir or os.getenv("DATA_DIR", "data"))
     llm = get_llm()
     app.state.store = store
+    api_token = api_token or os.getenv("API_TOKEN")
+    auth = [Depends(require_token(api_token))]
 
     @app.get("/", include_in_schema=False)
     def page() -> FileResponse:
@@ -77,13 +101,14 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "llm": llm.name if llm else "none (extractive mode)",
-                "embeddings": bool(store.embed), "chunks": len(store.index)}
+                "embeddings": bool(store.embed), "chunks": len(store.index),
+                "auth": bool(api_token)}
 
-    @app.get("/documents")
+    @app.get("/documents", dependencies=auth)
     def documents() -> dict:
         return {"documents": store.index.documents(), "chunks": len(store.index)}
 
-    @app.post("/documents", status_code=201)
+    @app.post("/documents", status_code=201, dependencies=auth)
     async def upload(files: list[UploadFile] = File(...)) -> dict:
         added = {}
         for file in files:
@@ -95,12 +120,12 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
             added[file.filename] = store.add_pdf(file.filename, data)
         return {"added": added, "documents": store.index.documents()}
 
-    @app.delete("/documents")
+    @app.delete("/documents", dependencies=auth)
     def reset() -> dict:
         store.reset()
         return {"documents": []}
 
-    @app.post("/ask")
+    @app.post("/ask", dependencies=auth)
     def ask(q: Question) -> dict:
         if not len(store.index):
             raise HTTPException(400, "Upload at least one PDF first.")

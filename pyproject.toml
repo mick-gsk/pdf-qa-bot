@@ -45,4 +45,4 @@ ignore = ["SIM905"]  # the stopword list reads better as one string
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI declares request parameters through call defaults.
-extend-immutable-calls = ["fastapi.File", "fastapi.Depends"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Header"]
