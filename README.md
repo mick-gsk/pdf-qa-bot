@@ -222,7 +222,7 @@ with `LLM_PROVIDER` and `EMBEDDINGS` set to compare setups on your own documents
 ## Development
 
 ```bash
-pytest --cov   # 132 tests
+pytest --cov   # 136 tests
 ruff check .
 mypy
 ```
