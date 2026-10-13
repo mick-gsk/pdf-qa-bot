@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 
 from .index import Index, tokenize
-from .ingest import is_heading, split_sentences
+from .ingest import Chunk, is_heading, split_sentences
 from .llm import LLM
 
 NOT_FOUND = "I couldn't find this in the uploaded documents."
@@ -43,8 +43,11 @@ def build_prompt(question: str, sources: list[Source]) -> str:
     return f"Excerpts:\n\n{excerpts}\n\nQuestion: {question}"
 
 
-def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4) -> Answer:
-    hits = index.search(question, k=k)
+def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
+           hits: list[tuple[Chunk, float]] | None = None) -> Answer:
+    """Answer from the top k chunks; pass `hits` to reuse a search that already ran."""
+    if hits is None:
+        hits = index.search(question, k=k)
     if not hits:
         return Answer(NOT_FOUND, [], "none")
     sources = [Source(n, chunk.citation, chunk.text, round(score, 4))
