@@ -29,3 +29,12 @@ def test_example_cases_run():
     summary = run(CASES).summary()
     assert summary["questions"] == 31
     assert summary["hit@4"] >= 0.9
+
+
+def test_each_question_is_retrieved_once():
+    index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
+    calls = []
+    search = index.search
+    index.search = lambda *a, **kw: calls.append(a) or search(*a, **kw)  # type: ignore[method-assign]
+    evaluate(index, [Case("How many vacation days?", "28 vacation days", "a.pdf", 1)])
+    assert len(calls) == 1

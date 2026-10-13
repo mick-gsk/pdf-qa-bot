@@ -43,7 +43,8 @@ class Store:
         self.index_path = settings.data_dir / "index.json"
         self.embed = get_embedder(settings)
         self.index = Index.load(self.index_path, self.embed) if self.index_path.exists() else Index(embed=self.embed)
-        # Endpoints run in a thread pool; writes to the index must not interleave.
+        # Endpoints run in a thread pool; writes to the index must not interleave. Searches
+        # take no lock: writers build a new index and swap it in.
         self.lock = threading.Lock()
 
     def documents(self) -> list[str]:
@@ -70,16 +71,20 @@ class Store:
             if not chunks:
                 path.unlink(missing_ok=True)
                 raise UnreadableDocument(f"{name} has no extractable text (scanned PDF? run OCR first).")
-            self.index.add(chunks)
-            self.index.save(self.index_path)
+            index = self.index.copy()
+            index.add(chunks)
+            index.save(self.index_path)
+            self.index = index
         log.info("indexed %s: %d chunks", name, len(chunks))
         return len(chunks)
 
     def remove(self, name: str) -> None:
         with self.lock:
             path = self.path(name)
-            self.index.remove(path.name)
-            self.index.save(self.index_path)
+            index = self.index.copy()
+            index.remove(path.name)
+            index.save(self.index_path)
+            self.index = index
             path.unlink()
         log.info("removed %s", path.name)
 

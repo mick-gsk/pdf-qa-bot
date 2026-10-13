@@ -65,6 +65,14 @@ class Index:
         if self.embed and chunks:
             self._vectors.extend(self.embed([c.text for c in chunks]))
 
+    def copy(self) -> Index:
+        """Independent copy. The store changes a copy and swaps it in, so a running search
+        never sees an index that is half updated."""
+        new = Index(embed=self.embed, k1=self.k1, b=self.b)
+        new.chunks, new._tokens, new._lengths = list(self.chunks), list(self._tokens), list(self._lengths)
+        new._df, new._vectors = Counter(self._df), list(self._vectors)
+        return new
+
     def idf(self, term: str, min_df: int = 0) -> float:
         """BM25 inverse document frequency. min_df=1 weighs unseen terms like the rarest seen ones."""
         n, df = len(self.chunks), max(self._df[term], min_df)
@@ -111,6 +119,9 @@ class Index:
         if not self.embed or not self._vectors:
             return []
         q = self.embed([query])[0]
+        if len(q) != len(self._vectors[0]):
+            # vectors saved with another embedding model; rebuild them with the current one
+            self._vectors = self.embed([c.text for c in self.chunks])
         scores = [(i, _cosine(q, v)) for i, v in enumerate(self._vectors)]
         return sorted(scores, key=lambda s: s[1], reverse=True)
 
