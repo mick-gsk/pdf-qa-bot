@@ -162,3 +162,9 @@ def test_equal_line_items_can_be_added():
 def test_overlapping_chunks_do_not_count_a_value_twice():
     sources = ["Shipping costs 6 euros.", "Shipping costs 6 euros. Returns are free."]
     assert [c.status for c in verify("Shipping is 12 euros in total [1][2].", sources).checks] == ["unsupported"]
+
+
+def test_bare_number_needs_the_same_counted_thing_in_the_excerpt():
+    sources = ["There are 3 meetings this week."]
+    assert [c.status for c in verify("There are 3 blockers [1].", sources).checks] == ["unsupported"]
+    assert verify("There are 3 meetings [1].", sources).grounded

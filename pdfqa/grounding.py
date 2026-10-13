@@ -195,9 +195,13 @@ def _check(claim: Claim, sources: list[_Source], cited: set[int], question: list
     in_scope = [(n, s) for n, s in numbered if not cited or n in cited]
     others = [(n, s) for n, s in numbered if cited and n not in cited]
 
+    context = _words(sentence)
+    if claim.kind == "amount" and claim.unit is None:
+        # a bare number is about the thing named right after it: "3 blockers" is not "3 meetings"
+        context = _named_after(claim, sentence) or context
     for scope, status in ((in_scope, "supported"), (others, "wrong_citation")):
         for n, source in scope:
-            match = _find(claim, source, _words(sentence))
+            match = _find(claim, source, context)
             if match is not None:
                 return result(status, n, match)
 
@@ -223,10 +227,10 @@ def _find(claim: Claim, source: _Source, context: set[str]) -> str | None:
             return source.evidence(c)
         if claim.kind == "time" and c.key == claim.key:
             return source.evidence(c)
-        if claim.kind == "amount" and _same(c.value, claim.value) and c.unit == claim.unit:
+        if claim.kind == "amount" and claim.unit and _same(c.value, claim.value) and c.unit == claim.unit:
             return source.evidence(c)
         if claim.kind == "amount" and claim.unit is None and _same(c.value, claim.value):
-            # A bare number ("settings 4 to 6") matches a value with any unit, but only if the
+            # A bare number ("settings 4 to 6") matches a value with or without a unit, but only if the
             # source sentence shares a word with the answer sentence; otherwise "5" would be
             # backed by "5 minutes" anywhere in the excerpt.
             evidence = source.evidence(c)
@@ -235,9 +239,21 @@ def _find(claim: Claim, source: _Source, context: set[str]) -> str | None:
     return None
 
 
-def _words(text: str) -> set[str]:
-    return {w[:6] for w in re.findall(r"[^\W\d_]{4,}", text.lower())}
+_STOPWORDS = frozenset("there this that these those with have will your about from were they them what when "
+                       "sind gibt haben wird werden eine einen einem einer nach noch auch oder aber".split())
 
+
+def _words(text: str) -> set[str]:
+    return {w[:6] for w in re.findall(r"[^\W\d_]{4,}", text.lower()) if w not in _STOPWORDS}
+
+
+def _named_after(claim: Claim, sentence: str) -> set[str]:
+    """Words of the one or two words right after a bare number: what it counts."""
+    at = sentence.find(claim.text)
+    if at < 0:
+        return set()
+    m = re.match(r"\s*((?:[^\W\d_]+[\s-]*){1,2})", sentence[at + len(claim.text):])
+    return _words(m.group(1)) if m else set()
 
 
 def _same(a: float | None, b: float | None) -> bool:
