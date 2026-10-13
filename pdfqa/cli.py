@@ -2,14 +2,17 @@
 
     python -m pdfqa.cli index handbook.pdf policies.pdf
     python -m pdfqa.cli ask "How many vacation days do I get?"
+    python -m pdfqa.cli eval examples/eval.json
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from . import evaluate
 from .index import Index
 from .ingest import chunk_pdf
 from .llm import get_embedder, get_llm
@@ -25,7 +28,18 @@ def main(argv: list[str] | None = None) -> int:
     p_ask = sub.add_parser("ask", help="ask a question")
     p_ask.add_argument("question")
     p_ask.add_argument("-k", type=int, default=4, help="number of excerpts to use")
+    p_eval = sub.add_parser("eval", help="score retrieval and answers against a case file")
+    p_eval.add_argument("cases", type=Path)
+    p_eval.add_argument("-k", type=int, default=4, help="number of excerpts to use")
+    p_eval.add_argument("-v", "--verbose", action="store_true", help="list failed questions")
     args = parser.parse_args(argv)
+
+    if args.command == "eval":
+        report = evaluate.run(args.cases, get_llm(), get_embedder(), k=args.k)
+        print(json.dumps(report.summary(), indent=2))
+        if args.verbose:
+            print("\n".join(report.failures), file=sys.stderr)
+        return 0
 
     index_path = Path(args.index)
     embed = get_embedder()
