@@ -100,3 +100,13 @@ def test_remove_document_keeps_vectors_of_the_rest():
 
 def test_inflected_stopwords_are_dropped_like_their_base_form():
     assert tokenize("What are employees getting?") == tokenize("Employees get") == ["employe"]
+
+
+def test_empty_index_is_not_embedded_on_load(tmp_path):
+    path = tmp_path / "index.json"
+    Index().save(path)
+
+    def embed(texts):
+        raise AssertionError("no chunks, nothing to embed")
+
+    assert Index.load(path, embed=embed).chunks == []
