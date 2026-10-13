@@ -19,4 +19,21 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: pytest -q
+      - run: mypy
+      - run: pytest -q --cov --cov-report=term --cov-fail-under=85
+      - name: Evaluation (extractive mode)
+        run: pdfqa eval examples/eval.json -v
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t pdf-qa-bot .
+      - name: Smoke test
+        run: |
+          docker run -d --name app -p 8000:8000 pdf-qa-bot
+          for i in $(seq 20); do curl -fs localhost:8000/health && break; sleep 1; done
+          curl -fs -F files=@examples/employee-handbook.pdf localhost:8000/documents
+          curl -fs -H 'Content-Type: application/json' -d '{"question": "How many vacation days?"}' \
+            localhost:8000/ask | grep -q "28 vacation days"
+          docker logs app
