@@ -79,6 +79,15 @@ _MONTHS = {
 }
 _MONTH_RE = "|".join(sorted(map(re.escape, _MONTHS), key=len, reverse=True))
 
+# "120 million euros", "3 Mrd. Dollar"; German "Billion" is 10^12, English "billion" 10^9
+_MAGNITUDES = {
+    "thousand": 1e3, "tausend": 1e3, "tsd": 1e3,
+    "million": 1e6, "millions": 1e6, "millionen": 1e6, "mio": 1e6,
+    "billion": 1e9, "billions": 1e9, "milliarde": 1e9, "milliarden": 1e9, "mrd": 1e9, "bn": 1e9,
+    "billionen": 1e12,
+}
+_MAG = rf"(?:\s+(?P<mag>{'|'.join(sorted(_MAGNITUDES, key=len, reverse=True))})\b\.?)?"
+
 # --- patterns -----------------------------------------------------------------------------
 
 _NUM = r"\d{1,3}(?:[.,  ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?"
@@ -96,9 +105,9 @@ _DATE_PATTERNS = [
 ]
 _TIME_RE = re.compile(r"\b(?P<h>[01]?\d|2[0-3])(?::(?P<min>[0-5]\d)(?:\s*uhr\b)?|\.(?P<min2>[0-5]\d)\s*uhr\b)",
                       re.IGNORECASE)
-_PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?(?P<num>{_NUM})")
+_PREFIX_CURRENCY_RE = re.compile(rf"(?P<unit>[€$£]|\b(?:EUR|USD|GBP|CHF))\s?(?P<num>{_NUM}){_MAG}", re.IGNORECASE)
 _AMOUNT_RE = re.compile(
-    rf"(?<![\w.,])(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?"
+    rf"(?<![\w.,])(?P<num>{_NUM}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
     rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|\s+[a-zäöüß-]{{3,15}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
     re.IGNORECASE,
 )
@@ -189,6 +198,7 @@ def extract(text: str) -> list[Claim]:
     for m in _PREFIX_CURRENCY_RE.finditer(masked):
         if free(m.start(), m.end()):
             currency, factor = _UNITS[m.group("unit").lower()]
+            factor *= _magnitude(m)
             for value in parse_number(m.group("num")):
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, currency,
                            _amount_key(value * factor, currency), value))
@@ -201,12 +211,18 @@ def extract(text: str) -> list[Claim]:
         if is_word and not raw_unit:
             continue  # "one of the rules" is not a claim; "three days" is
         unit, factor = _UNITS[raw_unit] if raw_unit else (None, 1.0)
+        magnitude = _magnitude(m)
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])
         for number in numbers:
             for value in parse_number(number):
+                value *= magnitude
                 take(Claim("amount", m.group(0), m.start(), m.end(), value * factor, unit,
                            _amount_key(value * factor, unit), value))
     return sorted(claims, key=lambda c: (c.start, c.key))
+
+
+def _magnitude(m: re.Match[str]) -> float:
+    return _MAGNITUDES[m.group("mag").lower()] if m.group("mag") else 1.0
 
 
 def _mask(text: str) -> str:
