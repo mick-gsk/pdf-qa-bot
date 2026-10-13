@@ -12,6 +12,7 @@ from pathlib import Path
 
 LLM_PROVIDERS = ("anthropic", "openai", "ollama", "none")
 EMBEDDING_PROVIDERS = ("openai", "ollama", "none")
+GROUNDING_MODES = ("repair", "flag", "off")
 DEFAULT_MODELS = {
     "anthropic": "claude-haiku-5-5",
     "openai": "gpt-4o-mini",
@@ -37,6 +38,7 @@ class Settings:
     chunk_words: int = 120
     top_k: int = 4
     log_level: str = "INFO"
+    grounding: str = "repair"
     # kept here because a key that is only in .env is not in os.environ for the SDKs to find
     anthropic_api_key: str | None = field(default=None, repr=False)
     openai_api_key: str | None = field(default=None, repr=False)
@@ -52,6 +54,8 @@ class Settings:
         _check("LLM_PROVIDER", provider, LLM_PROVIDERS)
         embeddings = env.get("EMBEDDINGS", "none").lower()
         _check("EMBEDDINGS", embeddings, EMBEDDING_PROVIDERS)
+        grounding = env.get("GROUNDING", "repair").lower()
+        _check("GROUNDING", grounding, GROUNDING_MODES)
         return cls(
             llm_provider=provider,
             llm_model=env.get("LLM_MODEL") or DEFAULT_MODELS.get(provider, ""),
@@ -64,6 +68,7 @@ class Settings:
             chunk_words=_int(env, "CHUNK_WORDS", cls.chunk_words, 30, 1000),
             top_k=_int(env, "TOP_K", cls.top_k, 1, 10),
             log_level=env.get("LOG_LEVEL", cls.log_level).upper(),
+            grounding=grounding,
             anthropic_api_key=env.get("ANTHROPIC_API_KEY") or None,
             openai_api_key=env.get("OPENAI_API_KEY") or None,
         )

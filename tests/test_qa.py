@@ -81,6 +81,48 @@ def test_stream_not_found_is_normalised(sample_pdf):
     assert final.text == NOT_FOUND and final.sources == []
 
 
+class ScriptedLLM(FakeLLM):
+    """Returns the given replies in order, one per call."""
+
+    def __init__(self, *replies):
+        super().__init__(None)
+        self.replies = list(replies)
+
+    def complete(self, system, prompt):
+        self.calls.append((system, prompt))
+        return self.replies.pop(0)
+
+
+def test_invented_number_is_repaired(sample_pdf):
+    llm = ScriptedLLM("Hotels are reimbursed up to 150 euros per night [1].",
+                      "Hotels are reimbursed up to 120 euros per night [1].")
+    result = answer("hotel cost limit", Index(chunk_pdf(sample_pdf)), llm)
+    assert result.text == "Hotels are reimbursed up to 120 euros per night [1]."
+    assert result.repaired and [c.status for c in result.checks] == ["supported"]
+    assert '"150 euros" does not appear' in llm.calls[1][1]
+
+
+def test_sentence_still_wrong_after_repair_is_dropped(sample_pdf):
+    llm = ScriptedLLM("Up to 120 euros per night [1]. Taxis up to 45 euros [1].",
+                      "Up to 120 euros per night [1]. Taxis are covered up to 45 euros [1].")
+    result = answer("hotel cost limit", Index(chunk_pdf(sample_pdf)), llm)
+    assert result.text == "Up to 120 euros per night [1]."
+    assert result.repaired and all(c.ok for c in result.checks)
+
+
+def test_flag_mode_reports_without_changing(sample_pdf):
+    llm = ScriptedLLM("Hotels are reimbursed up to 150 euros per night [1].")
+    result = answer("hotel cost limit", Index(chunk_pdf(sample_pdf)), llm, grounding="flag")
+    assert "150 euros" in result.text and not result.repaired
+    assert [c.status for c in result.checks] == ["unsupported"] and len(llm.calls) == 1
+
+
+def test_grounded_answer_needs_one_call(sample_pdf):
+    llm = ScriptedLLM("Hotels are reimbursed up to 120 euros per night [1].")
+    result = answer("hotel cost limit", Index(chunk_pdf(sample_pdf)), llm)
+    assert len(llm.calls) == 1 and not result.repaired
+
+
 def test_stream_without_llm_searches_once():
     index = Index([Chunk("a.pdf", 1, "Employees receive 28 vacation days per year.")])
     calls = []

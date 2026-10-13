@@ -34,6 +34,12 @@ def test_number_words_count_only_with_a_unit():
     assert keys("one of the rules") == []
 
 
+def test_number_word_glued_to_a_unit_letter_is_a_word():
+    # "ones" is not "one s", "eins" is not "ein s"; "three-day" still is a duration
+    assert keys("the ones listed, eins") == []
+    assert keys("a three-day trip") == [("amount", "3 day")]
+
+
 def test_one_descriptive_word_between_number_and_unit():
     assert keys("28 vacation days") == [("amount", "28 day")]
     assert keys("20 working days") == [("amount", "20 day")]

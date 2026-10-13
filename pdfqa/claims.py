@@ -53,7 +53,7 @@ _add("B", 1e9, "gb", "gigabyte", "gigabytes")
 _add("°C", 1, "°c", "degrees celsius", "degree celsius", "grad celsius", "grad")
 
 _UNIT_RE = "|".join(sorted((re.escape(u) for u in _UNITS), key=len, reverse=True))
-# units that may follow one descriptive word: "28 vacation days", "120 extra euros"
+# units that may follow one or two descriptive words: "28 vacation days", "five unused vacation days"
 _WORD_UNIT_RE = "|".join(sorted((re.escape(u) for u in _UNITS if len(u) > 3 and u.isalpha()), key=len, reverse=True))
 
 # --- number words -------------------------------------------------------------------------
@@ -64,7 +64,7 @@ _WORDS = {
     "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
     "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
     "hundred": 100,
-    "a dozen": 12, "half": 0.5,
+    "a dozen": 12, "half": 0.5, "half an": 0.5, "half a": 0.5, "eine halbe": 0.5, "einer halben": 0.5,
     "null": 0, "ein": 1, "eine": 1, "einen": 1, "einem": 1, "zwei": 2, "drei": 3, "vier": 4,
     "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10, "elf": 11,
     "zwölf": 12, "dreizehn": 13, "vierzehn": 14, "fünfzehn": 15, "sechzehn": 16, "siebzehn": 17,
@@ -155,7 +155,7 @@ _PREFIX_CURRENCY_RE = re.compile(rf"(?:(?<!\w)(?P<psign>[-+\u2212])(?=[€$£]|(
                                  re.IGNORECASE)
 _AMOUNT_RE = re.compile(
     rf"(?<![\w.,]){_SIGN}(?P<num>{_NUM}|{_COMPOUND_RE}|{_WORD_RE})(?:\s*(?:-|–|to|bis)\s*(?P<num2>{_NUM}))?{_MAG}"
-    rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|\s+[a-zäöüß-]{{3,15}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
+    rf"(?:[\s-]?(?P<unit>{_UNIT_RE})(?![\w])|(?:\s+[a-zäöüß-]{{3,15}}){{1,2}}\s+(?P<wunit>{_WORD_UNIT_RE})(?![\w]))?(?![\w])",
     re.IGNORECASE,
 )
 _QUOTE_RE = re.compile(r"[\"“„«](?P<q>[^\"“”„«»]{12,300})[\"”“»]")
@@ -262,6 +262,8 @@ def extract(text: str) -> list[Claim]:
         is_word = not m.group("num")[0].isdigit()
         if is_word and not raw_unit:
             continue  # "one of the rules" is not a claim; "three days" is
+        if is_word and m.group("unit") and masked[m.end("num")] not in " \u00a0-":
+            continue  # "ones", "eins": a number word glued to a unit letter is just a word
         unit, factor = _UNITS[raw_unit] if raw_unit else (None, 1.0)
         magnitude = _magnitude(m)
         numbers = [m.group("num")] + ([m.group("num2")] if m.group("num2") else [])

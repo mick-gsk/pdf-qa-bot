@@ -3,6 +3,7 @@ import json
 import pytest
 
 from pdfqa.cli import main
+from pdfqa.qa import answer
 
 CASES = "examples/eval.json"
 
@@ -31,6 +32,24 @@ def test_bad_config_is_a_usage_error(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         main(["ask", "x"])
     assert "LLM_PROVIDER" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("cases", ["examples/eval.json", "examples/grounding_cases.json"])
+def test_grounding_benchmark_has_no_false_alarms(cases, capsys):
+    assert main(["bench-grounding", cases]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["false_alarm_rate"] == 0.0
+    assert summary["detection_rate"] >= 0.85
+
+
+def test_ask_uses_the_configured_grounding(tmp_path, sample_pdf, monkeypatch):
+    index = str(tmp_path / "index.json")
+    main(["--index", index, "index", str(sample_pdf)])
+    seen = []
+    monkeypatch.setenv("GROUNDING", "off")
+    monkeypatch.setattr("pdfqa.cli.answer", lambda *a, **kw: seen.append(kw["grounding"]) or answer(*a, **kw))
+    main(["--index", index, "ask", "What is the hotel limit in Paris?"])
+    assert seen == ["off"]
 
 
 def test_pdfs_indexed_on_the_command_line_can_be_downloaded(tmp_path, sample_pdf, monkeypatch):

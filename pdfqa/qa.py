@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
+from .grounding import Check, repair_instructions, strip_unsupported, verify
 from .index import Index, tokenize
 from .ingest import Chunk, is_heading, split_sentences
 from .llm import LLM
@@ -35,6 +36,8 @@ class Answer:
     text: str
     sources: list[Source] = field(default_factory=list)
     mode: str = "extractive"
+    checks: list[Check] = field(default_factory=list)  # one per number, date or quote in the text
+    repaired: bool = False  # the first answer had unsupported values and was corrected
 
     @property
     def found(self) -> bool:
@@ -56,28 +59,38 @@ def retrieve(question: str, index: Index, k: int = 4,
 
 
 def answer(question: str, index: Index, llm: LLM | None = None, k: int = 4,
-           hits: list[tuple[Chunk, float]] | None = None) -> Answer:
-    return _answer(question, retrieve(question, index, k, hits), index, llm)
+           grounding: str = "repair", hits: list[tuple[Chunk, float]] | None = None) -> Answer:
+    """Retrieve, ask the model, then check its numbers, dates and quotes against the excerpts.
+
+    grounding: "repair" asks the model once to fix unsupported values and drops sentences
+    that are still wrong, "flag" only reports them, "off" skips the check. Pass `hits` to
+    reuse a search that already ran.
+    """
+    return _answer(question, retrieve(question, index, k, hits), index, llm, grounding)
 
 
-def _answer(question: str, sources: list[Source], index: Index, llm: LLM | None) -> Answer:
+def _answer(question: str, sources: list[Source], index: Index, llm: LLM | None, grounding: str) -> Answer:
     if not sources:
         return Answer(NOT_FOUND, [], "none")
     if llm is None:
-        return _finish(_extractive(question, sources, index), sources, "extractive")
-    return _finish(llm.complete(SYSTEM_PROMPT, build_prompt(question, sources)), sources, llm.name)
+        result = _finish(_extractive(question, sources, index), sources, "extractive")
+        if result.found and grounding != "off":
+            result.checks = verify(result.text, [s.text for s in sources], question).checks
+        return result
+    text = llm.complete(SYSTEM_PROMPT, build_prompt(question, sources))
+    return _check(text, question, sources, llm, grounding)
 
 
-def answer_stream(question: str, index: Index, llm: LLM | None = None,
-                  k: int = 4) -> Iterator[tuple[str, str | Answer]]:
+def answer_stream(question: str, index: Index, llm: LLM | None = None, k: int = 4,
+                  grounding: str = "repair") -> Iterator[tuple[str, str | Answer]]:
     """Like answer(), but yields ("token", text) pieces as the model writes and ends with ("done", Answer).
 
-    The final Answer is authoritative: if the model ends up saying it found nothing, the
-    client should replace the streamed text with it.
+    The final Answer is authoritative: the check may have repaired the text, or the model may
+    have ended up saying it found nothing. The client should replace the streamed text with it.
     """
     sources = retrieve(question, index, k)
     if not sources or llm is None:
-        result = _answer(question, sources, index, llm)  # reuse the search above
+        result = _answer(question, sources, index, llm, grounding)  # reuse the search above
         yield "token", result.text
         yield "done", result
         return
@@ -85,7 +98,28 @@ def answer_stream(question: str, index: Index, llm: LLM | None = None,
     for piece in llm.stream(SYSTEM_PROMPT, build_prompt(question, sources)):
         parts.append(piece)
         yield "token", piece
-    yield "done", _finish("".join(parts), sources, llm.name)
+    yield "done", _check("".join(parts), question, sources, llm, grounding)
+
+
+def _check(text: str, question: str, sources: list[Source], llm: LLM, grounding: str) -> Answer:
+    result = _finish(text, sources, llm.name)
+    if grounding == "off" or not result.found:
+        return result
+    excerpts = [s.text for s in sources]
+    report = verify(result.text, excerpts, question)
+    if not report.grounded and grounding == "repair":
+        retry = (f"{build_prompt(question, sources)}\n\nYour previous answer:\n{result.text}\n\n"
+                 f"{repair_instructions(report)}")
+        result = _finish(llm.complete(SYSTEM_PROMPT, retry), sources, llm.name)
+        if result.found:
+            report = verify(result.text, excerpts, question)
+            if not report.grounded:
+                # still wrong after one round: keep only the sentences that check out
+                result = _finish(strip_unsupported(result.text, report), sources, llm.name)
+                report = verify(result.text, excerpts, question)
+        result.repaired = True
+    result.checks = report.checks if result.found else []
+    return result
 
 
 def _finish(text: str, sources: list[Source], mode: str) -> Answer:

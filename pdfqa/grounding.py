@@ -20,22 +20,20 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 
-from .claims import Claim, extract, normalise_text
+from .claims import _MONTH_RE, Claim, extract, normalise_text
 
 PROBLEMS = ("unsupported", "unit_mismatch", "wrong_citation")
 
-# "120 Mio. euros" is one sentence: a magnitude abbreviation does not end it
-_SENTENCE_RE = re.compile(
-    r".+?(?:(?<!\bMio)(?<!\bMrd)(?<!\bTsd)(?<!\bmio)(?<!\bmrd)(?<!\btsd)[.!?](?:\s*\[\d+\])*(?=\s|$)|$)",
-    re.DOTALL)
+_BOUNDARY_RE = re.compile(r"[.!?](?:\s*\[\d+\])*(?=\s|$)")
+# a period after these does not end a sentence: "1. Januar", "e.g. 5", "ca. 20", "120 Mio. euros"
+_NO_BREAK_RE = re.compile(r"(?:\b\d{1,2}|\b(?:e\.g|i\.e|z\.b|ca|approx|nr|no|p|pp|vs|etc|bzw|inkl|ggf|mio|mrd|tsd))$",
+                          re.IGNORECASE)
+_MONTH_START_RE = re.compile(rf"\s+(?:{_MONTH_RE})\b", re.IGNORECASE)
 _CITE_RE = re.compile(r"\[(\d+)\]")
 _CITE_GROUP_RE = re.compile(r"(?:\[\d+\])+")
-# durations a per-day/week/... amount can be multiplied with; seconds-based units are not, since
-# "8 hours" is stored as 28800 s
-_PER = {"day", "week", "month", "year"}
 
 
 @dataclass
@@ -89,7 +87,7 @@ class _Source:
 def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
     """Check the claims in `answer` against `sources`, which the answer cites as [1], [2], ..."""
     indexed = [_Source(s, extract(s), normalise_text(s)) for s in sources]
-    known = {c.key for c in extract(question)}
+    asked = extract(question)
     report = Report()
     for sentence, _ in _sentences(answer):
         # several readings of one number ("1,234") share a span; one supported reading is enough.
@@ -100,7 +98,7 @@ def verify(answer: str, sources: Sequence[str], question: str = "") -> Report:
         groups = list(_CITE_GROUP_RE.finditer(sentence.group(0)))
         for (start, end, _), readings in by_span.items():
             cited = _citation_for(start, end, groups, sentence.group(0))
-            check = min((_check(c, indexed, cited, known) for c in readings), key=_rank)
+            check = min((_check(c, indexed, cited, asked, sentence.group(0)) for c in readings), key=_rank)
             check.start += sentence.start()
             check.end += sentence.start()
             report.checks.append(check)
@@ -134,10 +132,42 @@ def strip_unsupported(answer: str, report: Report) -> str:
 # --- internals ----------------------------------------------------------------------------
 
 
-def _sentences(answer: str):
-    for m in _SENTENCE_RE.finditer(answer):
-        if m.group(0).strip():
-            yield m, {int(n) for n in _CITE_RE.findall(m.group(0))}
+@dataclass
+class _Sentence:
+    text: str
+    begin: int
+
+    def group(self, _: int = 0) -> str:
+        return self.text
+
+    def start(self) -> int:
+        return self.begin
+
+    def end(self) -> int:
+        return self.begin + len(self.text)
+
+
+def _sentences(answer: str) -> Iterator[tuple[_Sentence, set[int]]]:
+    """Split into sentences, each with the excerpt numbers it cites. A citation right after the
+    period ("... night. [1]") belongs to the sentence before it."""
+    start = 0
+    for m in _BOUNDARY_RE.finditer(answer):
+        before = answer[start:m.start()]
+        if before.strip().isdigit():
+            continue  # list numbering: "1. Hotel costs ..."
+        # a citation after the period ends the sentence even after "etc." or "ca."
+        if ("[" not in m.group(0) and _NO_BREAK_RE.search(before)
+                and (not before[-1:].isdigit() or _MONTH_START_RE.match(answer, m.end()))):
+            continue
+        yield from _sentence(answer, start, m.end())
+        start = m.end()
+    yield from _sentence(answer, start, len(answer))
+
+
+def _sentence(answer: str, start: int, end: int) -> Iterator[tuple[_Sentence, set[int]]]:
+    text = answer[start:end]
+    if text.strip():
+        yield _Sentence(text, start), {int(n) for n in _CITE_RE.findall(text)}
 
 
 def _citation_for(start: int, end: int, groups: list[re.Match[str]], text: str) -> set[int]:
@@ -158,19 +188,24 @@ def _rank(check: Check) -> int:
     return order.index(check.status)
 
 
-def _check(claim: Claim, sources: list[_Source], cited: set[int], known: set[str]) -> Check:
+def _check(claim: Claim, sources: list[_Source], cited: set[int], question: list[Claim],
+           sentence: str) -> Check:
     def result(status: str, n: int | None = None, evidence: str = "") -> Check:
         return Check(claim.text, claim.kind, claim.start, claim.end, status, n, evidence)
 
-    if claim.key in known:
+    if claim.key in {c.key for c in question}:
         return result("supported", None, "given in the question")
     numbered = list(enumerate(sources, start=1))
     in_scope = [(n, s) for n, s in numbered if not cited or n in cited]
     others = [(n, s) for n, s in numbered if cited and n not in cited]
 
+    context = _words(sentence)
+    if claim.kind == "amount" and claim.unit is None:
+        # a bare number is about the thing named right after it: "3 blockers" is not "3 meetings"
+        context = _named_after(claim, sentence) or context
     for scope, status in ((in_scope, "supported"), (others, "wrong_citation")):
         for n, source in scope:
-            match = _find(claim, source)
+            match = _find(claim, source, context)
             if match is not None:
                 return result(status, n, match)
 
@@ -180,13 +215,13 @@ def _check(claim: Claim, sources: list[_Source], cited: set[int], known: set[str
                                and c.unit != claim.unit and _same(c.number, claim.number)), None)
             if other_unit:
                 return result("unit_mismatch", n, other_unit.text)
-        derived = _derive(claim, _occurrences(s for _, s in in_scope))
-        if derived:
+        derived = _derive(claim, _occurrences(s for _, s in in_scope) + question)
+        if derived and _CALCULATION_RE.search(sentence):
             return result("derived", None, derived)
     return result("unsupported")
 
 
-def _find(claim: Claim, source: _Source) -> str | None:
+def _find(claim: Claim, source: _Source, context: set[str]) -> str | None:
     if claim.kind == "quote":
         return claim.key if claim.key in source.plain else None
     for c in source.claims:
@@ -196,10 +231,32 @@ def _find(claim: Claim, source: _Source) -> str | None:
             return source.evidence(c)
         if claim.kind == "time" and c.key == claim.key:
             return source.evidence(c)
-        if (claim.kind == "amount" and _same(c.value, claim.value)
-                and (claim.unit is None or c.unit == claim.unit)):
+        if claim.kind == "amount" and claim.unit and _same(c.value, claim.value) and c.unit == claim.unit:
             return source.evidence(c)
+        if claim.kind == "amount" and claim.unit is None and _same(c.value, claim.value):
+            # A bare number ("settings 4 to 6") matches a value with or without a unit, but only if the
+            # source sentence shares a word with the answer sentence; otherwise "5" would be
+            # backed by "5 minutes" anywhere in the excerpt.
+            # A bare source value is likewise about the thing named after it.
+            evidence = source.evidence(c)
+            named = _named_after(c, source.text) if c.unit is None else set()
+            if context & (named or _words(evidence)):
+                return evidence
     return None
+
+
+_STOPWORDS = frozenset("there this that these those with have will your about from were they them what when "
+                       "sind gibt haben wird werden eine einen einem einer nach noch auch oder aber".split())
+
+
+def _words(text: str) -> set[str]:
+    return {w[:6] for w in re.findall(r"[^\W\d_]{4,}", text.lower()) if w not in _STOPWORDS}
+
+
+def _named_after(claim: Claim, sentence: str) -> set[str]:
+    """Words of the one or two words right after a bare number: what it counts."""
+    m = re.match(r"\s*((?:[^\W\d_]+[\s-]*){1,2})", sentence[claim.end:])
+    return _words(m.group(1)) if m else set()
 
 
 def _same(a: float | None, b: float | None) -> bool:
@@ -210,6 +267,16 @@ def _same_date(source: str, claim: str) -> bool:
     """An answer may leave out the year, but not add one the source does not give."""
     (ys, rest_s), (yc, rest_c) = source.split("-", 1), claim.split("-", 1)
     return rest_s == rest_c and (ys == yc or yc == "*")
+
+
+_COUNT_UNITS = (None, "day", "week", "month", "year")
+# A value only counts as derived if the sentence says it is a calculation. Otherwise "5 years"
+# would pass as 2 years + 3 years when the excerpt only mentions those two warranties. Rate words
+# ("per", "each", "pro") are no such sign: "280 euros per night" is not 120 + 160 euros per night.
+_CALCULATION_RE = re.compile(
+    r"\b(?:more|less|fewer|difference|total|together|combined|sum|altogether|times|gives|"
+    r"makes|comes to|adds up|mehr|weniger|insgesamt|zusammen|gesamt|differenz|ergibt|macht)\b",
+    re.IGNORECASE)
 
 
 def _occurrences(sources: Iterable[_Source]) -> list[Claim]:
@@ -225,11 +292,18 @@ def _occurrences(sources: Iterable[_Source]) -> list[Claim]:
 
 
 def _derive(claim: Claim, facts: list[Claim]) -> str | None:
-    """Explain the claim as one arithmetic step over two values from the excerpts, if possible."""
-    target = claim.value
-    if target is None or (claim.unit is None and abs(target) < 10):
-        return None  # small bare numbers are too easy to hit by accident
-    # compare at the precision the answer wrote, with a decimal point or comma
+    """Explain the claim as one arithmetic step over two values from the excerpts, if possible.
+
+    Only steps that make sense for the units are tried: sums and differences of two values
+    with the claim's unit, a percentage change, or a value multiplied or divided by a count
+    or a duration ("28 euros per day" for "3 days"). Bare numbers are never derived; too many
+    would match by chance.
+    """
+    target, unit = claim.value, claim.unit
+    if target is None or unit is None or not claim.number:
+        return None
+    # compare at the precision the answer wrote, in the unit it wrote: "251 ml" is not 0.25 l
+    scale = target / claim.number
     written = re.search(r"\d[.,](\d+)\b", claim.text)
     decimals = len(written.group(1)) if written else 0
     # every occurrence counts: two line items of 6 euros add up to 12 euros
@@ -238,42 +312,14 @@ def _derive(claim: Claim, facts: list[Claim]) -> str | None:
     for (a, ua, ta, sa, pa), (b, ub, tb, sb, pb) in itertools.permutations(amounts, 2):
         if (sa, pa, ta) == (sb, pb, tb) and a != b:
             continue  # two readings of the same number ("1,234")
-        same_unit = ua == ub
         candidates = []
-        if same_unit and claim.unit in (None, ua):
+        if ua == ub == unit:
             candidates += [(a + b, f"{ta} + {tb}"), (a - b, f"{ta} − {tb}")]
-        if claim.unit == "%" and same_unit and b:
+        if unit == "%" and ua == ub and ua is not None and b:
             candidates.append(((a - b) / b * 100, f"({ta} − {tb}) / {tb}"))
-        product, quotient = _product_unit(ua, ub), _quotient_unit(ua, ub)
-        if product != _INVALID and claim.unit in (None, product):
-            candidates.append((a * b, f"{ta} × {tb}"))
-        if b and quotient != _INVALID and claim.unit in (None, quotient):
-            candidates.append((a / b, f"{ta} / {tb}"))
+        if ua == unit and ub in _COUNT_UNITS and b >= 2 and b == int(b):
+            candidates += [(a * b, f"{ta} × {tb}"), (a / b, f"{ta} / {tb}")]
         for value, how in candidates:
-            if round(value, decimals) == round(target, decimals):
+            if round(value / scale, decimals) == round(claim.number, decimals):
                 return how
     return None
-
-
-_INVALID = "invalid"
-
-
-def _product_unit(ua: str | None, ub: str | None) -> str | None:
-    """Unit of a × b: a count or a per-day/week duration times an amount. 160 euros × 28 euros
-    is not an amount of euros."""
-    if ua is None or ub is None:
-        return ua or ub
-    if ub in _PER and ua not in _PER:
-        return ua
-    if ua in _PER and ub not in _PER:
-        return ub
-    return _INVALID
-
-
-def _quotient_unit(ua: str | None, ub: str | None) -> str | None:
-    """Unit of a / b: same units give a ratio, dividing by a count or duration keeps the unit."""
-    if ua == ub:
-        return None
-    if ub is None or ub in _PER:
-        return ua
-    return _INVALID
